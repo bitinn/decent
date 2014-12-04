@@ -1,0 +1,36 @@
+{
+  "name": "dq",
+  "version": "0.1.0",
+  "description": "Job queue is hard, so we try Disney queue instead.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node node_modules/mocha/bin/mocha --harmony test/test.js",
+    "dev": "node node_modules/mocha/bin/mocha --harmony -w test/test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bitinn/dq.git"
+  },
+  "keywords": [
+    "redis",
+    "queue",
+    "job"
+  ],
+  "author": "David Frank",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/bitinn/dq/issues"
+  },
+  "homepage": "https://github.com/bitinn/dq",
+  "dependencies": {
+    "native-or-bluebird": "^1.1.2",
+    "redis": "^0.12.1"
+  },
+  "devDependencies": {
+    "chai": "^1.10.0",
+    "chai-as-promised": "^4.1.1",
+    "mocha": "^2.0.1",
+    "sinon": "^1.12.1",
+    "sinon-chai": "^2.6.0"
+  }
+}
