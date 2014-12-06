@@ -91,7 +91,64 @@ describe('dq', function() {
 		it('should reject if queue id is not number', function() {
 			queue.client.hmset('dq:test:id', { a: 1 });
 
-			return expect(queue.nextId()).to.eventually.be.rejected;
+			return expect(queue.nextId()).to.eventually.be.rejectedWith(Error);
+		});
+	});
+
+	describe('nextJob', function() {
+		it('should return the next job on queue', function() {
+			queue.add({ a: 1 });
+		
+			return expect(queue.nextJob()).to.eventually.be.fulfilled;
+		});
+
+		it('should return the job properly formatted', function() {
+			queue.add({ a: 1 })
+
+			return queue.nextJob().then(function(job) {
+				expect(job.id).to.equal(1);
+				expect(job.data).to.deep.equal({ a: 1 });
+				expect(job.retry).to.equal(0);
+				expect(job.timeout).to.equal(60);
+			});
+		});
+
+		it('should wait for next job to be available', function() {
+			setTimeout(function() {
+				queue.add({ a: 1 });
+			}, 25);
+			
+			return expect(queue.nextJob()).to.eventually.be.fulfilled;
+		});
+
+		it('should block for n seconds before returning status_timeout', function() {
+			var stub = sinon.stub(queue.bclient, 'brpoplpush', function(a1, a2, a3, cb) {
+				setTimeout(function() {
+					cb(null, null);
+				}, 25);
+			});
+
+			return expect(queue.nextJob()).to.eventually.equal(queue.status_timeout);
+		});
+
+		it('should reject if job data is missing', function() {
+			queue.client.lpush('dq:test:work', '1');
+
+			return expect(queue.nextJob()).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if job is invalid', function() {
+			var job = {
+				id: '1'
+				, data: 'a:1'
+				, retry: '0'
+				, timeout: '60'
+			};
+
+			queue.client.hmset('dq:test:1', job);
+			queue.client.lpush('dq:test:work', '1');
+
+			return expect(queue.nextJob()).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -121,7 +178,7 @@ describe('dq', function() {
 				id: 1
 				, data: testObj
 				, retry: 0
-				, timeout: 120
+				, timeout: 60
 			};
 
 			expect(function() { queue.toClient(job) }).to.throw(Error);
@@ -150,10 +207,177 @@ describe('dq', function() {
 				id: 1
 				, data: 'a:1'
 				, retry: 0
-				, timeout: 120
+				, timeout: 60
 			};
 
 			expect(function() { queue.fromClient(job) }).to.throw(Error);
+		});
+	});
+
+	describe('worker', function() {
+		it('should register a job handler', function() {
+			var stub = sinon.stub(queue, 'listen');
+			var handler = function() {};
+
+			queue.worker(handler);
+			expect(queue.handler).to.equal(handler);
+		});
+
+		it('should throw error if handler is not function', function() {
+			var stub = sinon.stub(queue, 'listen');
+			var handler = 1;
+
+			expect(function() { queue.worker(handler) }).to.throw(Error);
+		});
+
+		it('should throw error if handler exists', function() {
+			var stub = sinon.stub(queue, 'listen');
+			var handler = function() {};
+
+			queue.handler = handler;
+			expect(function() { queue.worker(handler) }).to.throw(Error);
+		});
+
+		it('should kick start queue listener', function() {
+			var stub = sinon.stub(queue, 'listen');
+			var handler = function() {};
+
+			queue.worker(handler);
+			expect(stub).to.have.been.calledOnce;
+		});
+	});
+
+	describe('listen', function() {
+		it('should kick start run process', function() {
+			var stub = sinon.stub(queue, 'run');
+			stub.returns(Promise.resolve(true));
+
+			return queue.listen().then(function() {
+				expect(stub).to.have.been.calledOnce;
+			});
+		});
+
+		it('should emit event on error and exit', function() {
+			var error = new Error('some error');
+
+			var stub = sinon.stub(queue, 'run');
+			stub.returns(Promise.reject(error));
+
+			var spy = sinon.spy();
+			queue.on('queue error', spy);
+
+			return queue.listen().then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(error);
+			});
+		});
+	});
+
+	describe('run', function() {
+		it('should repeatedly run until error', function() {
+			var error = new Error('some error');
+
+			var s0 = sinon.stub(queue, 'nextJob');
+			var s1 = sinon.stub(queue, 'handleStatus');
+			var s2 = sinon.stub(queue, 'handleJob');
+			s0.returns(Promise.resolve(true));
+			s1.returns(Promise.resolve(true));
+			s2.onCall(0).returns(Promise.resolve(true));
+			s2.onCall(1).returns(Promise.reject(error));
+
+			return queue.run().catch(function(err) {
+				expect(s0).to.have.been.calledTwice;
+				expect(s1).to.have.been.calledTwice;
+				expect(s2).to.have.been.calledTwice;
+				expect(err).to.equal(error);
+			});
+		});
+	});
+
+	describe('handleStatus', function() {
+		it('should get next job again if input is status_timeout', function() {
+			var stub = sinon.stub(queue, 'nextJob');
+			stub.returns(Promise.resolve(true));
+
+			return queue.handleStatus(queue.status_timeout).then(function(res) {
+				expect(stub).to.have.been.calledOnce;
+				expect(res).to.be.true;
+			});
+		});
+
+		it('should pass on job object unchanged', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			return expect(queue.handleStatus(job)).to.equal(job);
+		});
+	});
+
+	describe('handleJob', function() {
+		it('should run handler to process job', function() {
+
+		});
+
+		it('should emit error from handler', function() {
+
+		});
+
+		it('should move job to another queue if handler throw error', function() {
+
+		});
+
+		it('should remove job if handler ran successfully', function() {
+
+		});
+
+		it('should remove job if handler is missing', function() {
+
+		});
+
+		it('should reject if any command failed', function() {
+
+		});
+	});
+
+	describe('moveJob', function() {
+		it('should move job into work queue when retry available', function() {
+
+		});
+
+		it('should move job into fail queue when retry limit reached', function() {
+
+		});
+
+		it('should increment job retry count', function() {
+
+		});
+
+		it('should reject if any command failed', function() {
+
+		});
+	});
+
+	describe('runFailJobs', function() {
+		it('should queue failed jobs back to work queue as new jobs', function() {
+
+		});
+	});
+
+	describe('count', function() {
+		it('should return work queue job count', function() {
+			return queue.add({ a: 1 }).then(function() {
+				return expect(queue.count()).to.eventually.equal(1);
+			});
+		});
+
+		it('should reject if queue is invalid', function() {
+			queue.client.set('dq:test:work', 1);
+
+			return expect(queue.count()).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -309,9 +533,19 @@ describe('dq', function() {
 		});
 	});
 
-	describe('more test', function() {
-		it('should do more test', function() {
+	describe('Real-world tests', function() {
+		it('should process jobs', function() {
 
+		});
+	});
+
+	describe('end', function() {
+		it('should not leave test data in redis', function(done) {
+			queue.client.keys('dq:test:*', function(err, res) {
+				expect(err).to.be.null;
+				expect(res).to.be.empty;
+				done();
+			});
 		});
 	});
 });
