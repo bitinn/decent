@@ -77,21 +77,83 @@ describe('dq', function() {
 		});
 	});
 
-	describe('getId', function() {
+	describe('nextId', function() {
 		it('should setup queue id and return it', function() {
-			return expect(queue.getId()).to.eventually.equal(1);
+			return expect(queue.nextId()).to.eventually.equal(1);
 		});
 
 		it('should increment queue id and return it', function() {
 			queue.client.set('dq:test:id', 5);
 
-			return expect(queue.getId()).to.eventually.equal(6);
+			return expect(queue.nextId()).to.eventually.equal(6);
 		});
 
 		it('should reject if queue id is not number', function() {
 			queue.client.hmset('dq:test:id', { a: 1 });
 
-			return expect(queue.getId()).to.eventually.be.rejected;
+			return expect(queue.nextId()).to.eventually.be.rejected;
+		});
+	});
+
+	describe('toClient', function() {
+		it('should convert job into redis format', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 120
+			};
+
+			expect(queue.toClient(job)).to.deep.equal({
+				id: 1
+				, data: '{"a":1}'
+				, retry: 0
+				, timeout: 120
+			});
+		});
+
+		it('should trigger error if job data is not serializable', function() {
+			var testObj = {};
+			testObj.key = 'value';
+			testObj.cycle = testObj;
+
+			var job = {
+				id: 1
+				, data: testObj
+				, retry: 0
+				, timeout: 120
+			};
+
+			expect(function() { queue.toClient(job) }).to.throw(Error);
+		});
+	});
+
+	describe('fromClient', function() {
+		it('should convert redis job into original format', function() {
+			var job = {
+				id: '1'
+				, data: '{"a":1}'
+				, retry: '0'
+				, timeout: '120'
+			};
+
+			expect(queue.fromClient(job)).to.deep.equal({
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 120
+			});
+		});
+
+		it('should trigger error if redis job data is invalid', function() {
+			var job = {
+				id: 1
+				, data: 'a:1'
+				, retry: 0
+				, timeout: 120
+			};
+
+			expect(function() { queue.fromClient(job) }).to.throw(Error);
 		});
 	});
 
@@ -151,7 +213,7 @@ describe('dq', function() {
 			var testObj = {};
 			testObj.key = 'value';
 			testObj.cycle = testObj;
-			return expect(queue.add(testObj)).to.eventually.be.rejected;
+			return expect(queue.add(testObj)).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should emit event when done', function() {
@@ -164,9 +226,86 @@ describe('dq', function() {
 			});
 		});
 
-		it.skip('should emit event when failed', function() {
-			// currently not testable due to a redis client bug
-			// see Queue.prototype.add for more comments
+		it('should emit event when failed', function() {
+			queue.client.set('dq:test:work', 1);
+
+			var spy = sinon.spy();
+			queue.on('add error', spy);
+
+			return expect(queue.add({ a: 1 })).to.eventually.be.rejectedWith(Error);
+		});
+	});
+
+	describe('clientReady', function() {
+		it('should emit client ready event', function() {
+			var spy = sinon.spy();
+			queue.on('client ready', spy);
+
+			queue.client.emit('ready');
+
+			expect(spy).to.have.been.calledOnce;
+		});
+	});
+
+	describe('clientConnect', function() {
+		it('should emit client ready event when no_ready_check is set', function() {
+			var spy = sinon.spy();
+			queue.on('client ready', spy);
+
+			queue.opts.no_ready_check = true;
+			queue.client.emit('connect');
+
+			expect(spy).to.have.been.calledOnce;
+		});
+	});
+
+	describe('clientError', function() {
+		it('should emit client error event with redis client error', function() {
+			var spy = sinon.spy();
+			queue.on('client error', spy);
+
+			var err = new Error('some error');
+			queue.client.emit('error', err);
+
+			expect(spy).to.have.been.calledOnce;
+			expect(spy).to.have.been.calledWith(err);
+		});
+	});
+
+	describe('clientEnd', function() {
+		it('should emit client close event', function() {
+			var spy = sinon.spy();
+			queue.on('client close', spy);
+
+			queue.client.emit('end');
+
+			expect(spy).to.have.been.calledOnce;
+		});
+	});
+
+	describe('clientDrain', function() {
+		it('should emit client pressure event when cmd queue is non-zero', function() {
+			var spy = sinon.spy();
+			queue.on('client pressure', spy);
+
+			return queue.add({ a: 1 }).then(function() {
+				expect(queue.idle).to.be.true;
+				expect(spy).to.have.been.calledThrice;
+				expect(spy).to.have.been.calledWith(1);
+			});
+		});
+	});
+
+	describe('clientIdle', function() {
+		it('should emit client pressure event when no pending cmd', function() {
+			var spy = sinon.spy();
+			queue.on('client pressure', spy);
+
+			return queue.add({ a: 1 }).then(function() {
+				expect(queue.idle).to.be.true;
+				expect(spy).to.have.been.calledThrice;
+				expect(spy).to.have.been.calledWith(0);
+			});
 		});
 	});
 
