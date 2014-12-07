@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset='utf-8'>
+    <meta http-equiv="X-UA-Compatible" content="chrome=1">
+    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
+    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen">
+    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <!--[if lt IE 9]>
+    <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
+    <![endif]-->
+    <title>Decent by bitinn</title>
+  </head>
+
+  <body>
+    <div id="container">
+      <div class="inner">
+
+        <header>
+          <h1>Decent</h1>
+          <h2>A redis-based job queue for Node: job queue is hard, so we make it decent for you.</h2>
+        </header>
+
+        <section id="downloads" class="clearfix">
+          <a href="https://github.com/bitinn/decent/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
+          <a href="https://github.com/bitinn/decent/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
+          <a href="https://github.com/bitinn/decent" id="view-on-github" class="button"><span>View on GitHub</span></a>
+        </section>
+
+        <hr>
+
+        <section id="main_content">
+          <h1>
+<a id="decent" class="anchor" href="#decent" aria-hidden="true"><span class="octicon octicon-link"></span></a>decent</h1>
+
+<p>Job queue is hard, so we make it decent for you.</p>
+
+<p><code>decent</code> is a Redis-based job queue for Node.</p>
+
+<p><a href="https://travis-ci.org/bitinn/decent"><img src="https://travis-ci.org/bitinn/decent.svg?branch=master" alt="Build Status"></a> <a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg" alt="Coverage Status"></a></p>
+
+<h1>
+<a id="motivation" class="anchor" href="#motivation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Motivation</h1>
+
+<p>Despite efforts from brilliant developers, a reliable job queue using node.js and redis is still somewhat of a mythical beast. And no wonder: redis isn't a queueing system by nature and node.js isn't known for superior error handling; add concurrency into the mix and you got a leaky pipeline that's almost impossible to debug.</p>
+
+<p>In short, we need better groundwork before we can harness the power of queue. Hence the birth of <code>decent</code>: we want a library that provides solid building blocks for complex pipelines, so we can safely enjoy what job queue has to offer.</p>
+
+<h1>
+<a id="features" class="anchor" href="#features" aria-hidden="true"><span class="octicon octicon-link"></span></a>Features</h1>
+
+<ul>
+<li>Simple API and helpers, powered by <code>Promise</code>.</li>
+<li>Full code coverage is a basic requirement, on average at least 3 test cases for each API, and we put extra emphasis on negative tests, because that's where most queue fall and cause headaches.</li>
+<li>Annotated source code, less than 1,000 loc in total.</li>
+<li>No dependency besides <code>redis</code> driver, make use of native promise whenever possible, fallback to <code>bluebird</code> for older Node release.</li>
+<li>Rich event to aid automation, monitoring and building larger pipeline.</li>
+</ul>
+
+<h1>
+<a id="install" class="anchor" href="#install" aria-hidden="true"><span class="octicon octicon-link"></span></a>Install</h1>
+
+<p><code>npm install decent --save</code></p>
+
+<h1>
+<a id="api" class="anchor" href="#api" aria-hidden="true"><span class="octicon octicon-link"></span></a>API</h1>
+
+<h2>
+<a id="decentname-opts" class="anchor" href="#decentname-opts" aria-hidden="true"><span class="octicon octicon-link"></span></a>decent(name, opts)</h2>
+
+<p>Create a queue with <code>name</code> and config redis client connection based on <code>opts</code>, returns a decent queue instance.</p>
+
+<h3>
+<a id="examples" class="anchor" href="#examples" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
+
+<pre><code>var decent = require('decent');
+
+var q1 = decent('test');
+var q2 = decent('test', { port: 6379, host: 'localhost', connect_timeout: 5000 });
+</code></pre>
+
+<h3>
+<a id="opts" class="anchor" href="#opts" aria-hidden="true"><span class="octicon octicon-link"></span></a>opts</h3>
+
+<ul>
+<li>
+<code>port</code>: redis server port, default to <code>6379</code>
+</li>
+<li>
+<code>host</code>: redis server host, default to <code>'127.0.0.1'</code>
+</li>
+<li>
+<code>blockTimeout</code>: how long should client wait for next job (see redis document on blocking command, such as <a href="http://redis.io/commands/BLPOP">BLPOP</a>), defaults to <code>30</code> seconds, <code>0</code> to block forever.</li>
+<li>
+<code>maxRetry</code>: how many retries a job can have before moving to failure queue, defaults to <code>3</code>, <code>0</code> to disable retry.</li>
+<li>and all <a href="https://github.com/mranney/node_redis#rediscreateclient">redis client options</a>.</li>
+</ul>
+
+<h2>
+<a id="queueadddata-opts" class="anchor" href="#queueadddata-opts" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.add(data, opts)</h2>
+
+<p>Create a job on queue using <code>data</code> as payload and allows job specific <code>opts</code>, returns a promise that resolve to the created job.</p>
+
+<h3>
+<a id="examples-1" class="anchor" href="#examples-1" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
+
+<pre><code>queue.add({ a: 1 }).then(function(job) {
+    console.log(job.data); // { a: 1 }
+});
+
+queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
+    console.log(job); // { a: 1, b: 1 }
+});
+</code></pre>
+
+<h3>
+<a id="opts-1" class="anchor" href="#opts-1" aria-hidden="true"><span class="octicon octicon-link"></span></a>opts</h3>
+
+<ul>
+<li>
+<code>retry</code>: default to <code>0</code>
+</li>
+<li>
+<code>timeout</code>: default to <code>60</code> seconds</li>
+</ul>
+
+<h3>
+<a id="job" class="anchor" href="#job" aria-hidden="true"><span class="octicon octicon-link"></span></a>job</h3>
+
+<ul>
+<li>
+<code>id</code>: job id</li>
+<li>
+<code>data</code>: payload</li>
+<li>
+<code>retry</code>: retry count</li>
+<li>
+<code>timeout</code>: worker timeout (not currently used)</li>
+</ul>
+
+<h2>
+<a id="queueworkerhandler" class="anchor" href="#queueworkerhandler" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.worker(handler)</h2>
+
+<p>Register a handler function that process jobs, and start processing items in queue.</p>
+
+<h3>
+<a id="examples-2" class="anchor" href="#examples-2" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
+
+<pre><code>queue.worker(function(job) {
+    console.log(job);
+});
+</code></pre>
+
+<h2>
+<a id="queuecountname" class="anchor" href="#queuecountname" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.count(name)</h2>
+
+<p>Returns a promise that resolve to the queue length of specified queue, default to <code>work</code> queue.</p>
+
+<h3>
+<a id="examples-3" class="anchor" href="#examples-3" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
+
+<pre><code>queue.count('work').then(function(count) {
+    console.log(count); // pending jobs
+});
+
+queue.count('run').then(function(count) {
+    console.log(count); // running jobs
+});
+
+queue.count('fail').then(function(count) {
+    console.log(count); // failed jobs
+});
+</code></pre>
+
+<h2>
+<a id="queuegetid" class="anchor" href="#queuegetid" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.get(id)</h2>
+
+<p>Returns a promise that resolve to the job itself.</p>
+
+<h3>
+<a id="examples-4" class="anchor" href="#examples-4" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
+
+<pre><code>queue.get(1).then(function(job) {
+    console.log(job.id); // 1
+});
+</code></pre>
+
+<h1>
+<a id="events" class="anchor" href="#events" aria-hidden="true"><span class="octicon octicon-link"></span></a>Events</h1>
+
+<p><code>decent</code> is also an instance of <code>EventEmitter</code>, so you can use <code>queue.on('event', func)</code> to listen for events as usual.</p>
+
+<h2>
+<a id="redis-client-related" class="anchor" href="#redis-client-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>redis client related</h2>
+
+<ul>
+<li>
+<code>queue.emit('client ready')</code>: client is ready. (redis client has buffer built-in, so this event is emitted as soon as redis client is started)</li>
+<li>
+<code>queue.emit('client error', err)</code>: client connection error.</li>
+<li>
+<code>queue.emit('client close')</code>: client connection has been closed.</li>
+<li>
+<code>queue.emit('client pressure', number)</code>: pending number of commands to run on server, useful for rate limiting.</li>
+</ul>
+
+<h2>
+<a id="queue-worker-related" class="anchor" href="#queue-worker-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue worker related</h2>
+
+<ul>
+<li>
+<code>queue.emit('queue ok', job)</code>: queue worker has processed a <code>job</code>.</li>
+<li>
+<code>queue.emit('queue error', err)</code>: queue worker has failed to processed a job and thrown <code>err</code>.</li>
+<li>
+<code>queue.emit('queue exit', err)</code>: queue has terminated due to <code>err</code>.</li>
+<li>
+<code>queue.emit('queue stop')</code>: queue has stopped gracefully.</li>
+</ul>
+
+<h2>
+<a id="queue-client-related" class="anchor" href="#queue-client-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue client related</h2>
+
+<ul>
+<li>
+<code>queue.emit('add ok', job)</code>: <code>job</code> has been added to queue.</li>
+<li>
+<code>queue.emit('add error', err)</code>: failed to add job onto queue due to <code>err</code>.</li>
+</ul>
+
+<h1>
+<a id="development" class="anchor" href="#development" aria-hidden="true"><span class="octicon octicon-link"></span></a>Development</h1>
+
+<pre><code>npm install
+npm test
+</code></pre>
+
+<h1>
+<a id="future-plan" class="anchor" href="#future-plan" aria-hidden="true"><span class="octicon octicon-link"></span></a>Future plan</h1>
+
+<ul>
+<li>API for handling failed jobs</li>
+<li>Use-case examples</li>
+<li>Web UI</li>
+</ul>
+
+<h1>
+<a id="license" class="anchor" href="#license" aria-hidden="true"><span class="octicon octicon-link"></span></a>License</h1>
+
+<p>MIT</p>
+        </section>
+
+        <footer>
+          Decent is maintained by <a href="https://github.com/bitinn">bitinn</a><br>
+          This page was generated by <a href="http://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
+        </footer>
+
+        
+      </div>
+    </div>
+  </body>
+</html>
