@@ -103,7 +103,7 @@ queue.worker(function(job) {
 
 Returns a promise that resolve to the queue length of specified queue, default to `work` queue.
 
-## examples
+### examples
 
 ```
 queue.count('work').then(function(count) {
@@ -124,7 +124,7 @@ queue.count('fail').then(function(count) {
 
 Returns a promise that resolve to the job itself.
 
-## examples
+### examples
 
 ```
 queue.get(1).then(function(job) {

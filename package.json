@@ -4,7 +4,7 @@
   "description": "Job queue is hard, so we make it decent for you.",
   "main": "index.js",
   "scripts": {
-    "test": "node node_modules/mocha/bin/mocha --harmony test/test.js",
+    "test": "node node_modules/mocha/bin/mocha test/test.js",
     "dev": "nodemon node_modules/mocha/bin/mocha --harmony test/test.js"
   },
   "repository": {
