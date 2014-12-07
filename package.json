@@ -1,7 +1,7 @@
 {
   "name": "decent",
   "version": "0.1.2",
-  "description": "Job queue is hard, so we make it decent for you.",
+  "description": "Redis-based job queue for Node: job queue is hard to manage, we make it decent for you.",
   "main": "index.js",
   "scripts": {
     "test": "mocha test/test.js",
