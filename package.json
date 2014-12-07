@@ -1,6 +1,6 @@
 {
   "name": "decent",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Redis-based job queue for Node: job queue is hard to manage, we make it decent for you.",
   "main": "index.js",
   "scripts": {
