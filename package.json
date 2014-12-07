@@ -1,6 +1,6 @@
 {
   "name": "decent",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Job queue is hard, so we make it decent for you.",
   "main": "index.js",
   "scripts": {
