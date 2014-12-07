@@ -11,18 +11,18 @@ chai.use(sc);
 var expect = chai.expect;
 
 // test subjects
-var dq = require('../index.js');
+var decent = require('../index.js');
 var EventEmitter = require('events').EventEmitter;
 var Promise = require('native-or-bluebird');
 
 // global vars
 var queue;
 
-describe('dq', function() {
+describe('decent', function() {
 
 	beforeEach(function() {
 		// do not wait for redis connection, let client buffer command
-		queue = dq('test');
+		queue = decent('test');
 	});
 
 	afterEach(function() {
@@ -53,7 +53,7 @@ describe('dq', function() {
 	});
 
 	describe('constructor', function() {
-		it('should return a dq instance properly', function() {
+		it('should return a decent instance properly', function() {
 			expect(queue.name).to.equal('test');
 			expect(queue.port).to.equal(6379);
 			expect(queue.host).to.equal('127.0.0.1');
@@ -76,7 +76,7 @@ describe('dq', function() {
 		});
 
 		it('should allow custom redis options', function() {
-			queue = dq('test', { port: '6379', host: 'localhost', connect_timeout: 5000 });
+			queue = decent('test', { port: '6379', host: 'localhost', connect_timeout: 5000 });
 
 			expect(queue.port).to.equal('6379');
 			expect(queue.host).to.equal('localhost');
@@ -84,7 +84,7 @@ describe('dq', function() {
 		});
 
 		it('should throw error if queue name is missing', function() {
-			expect(dq).to.throw(Error);
+			expect(decent).to.throw(Error);
 		});
 
 		it('should return an instance of event emitter', function() {
@@ -787,7 +787,7 @@ describe('dq', function() {
 				expect(handler).to.have.been.calledOnce;
 				expect(spy).to.have.been.calledOnce;
 				expect(job.data).to.have.property('a', 1);
-				
+
 				queue.removeAllListeners('queue ok');
 				queue.stop();
 				done();

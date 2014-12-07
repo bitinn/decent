@@ -1,7 +1,7 @@
 {
-  "name": "dq",
-  "version": "0.1.0",
-  "description": "Job queue is hard, so we try Disney queue instead.",
+  "name": "decent",
+  "version": "0.1.1",
+  "description": "Job queue is hard, so we make it decent for you.",
   "main": "index.js",
   "scripts": {
     "test": "node node_modules/mocha/bin/mocha --harmony test/test.js",
@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/bitinn/dq.git"
+    "url": "https://github.com/bitinn/decent.git"
   },
   "keywords": [
     "redis",
@@ -19,9 +19,9 @@
   "author": "David Frank",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/bitinn/dq/issues"
+    "url": "https://github.com/bitinn/decent/issues"
   },
-  "homepage": "https://github.com/bitinn/dq",
+  "homepage": "https://github.com/bitinn/decent",
   "dependencies": {
     "native-or-bluebird": "^1.1.2",
     "redis": "^0.12.1"

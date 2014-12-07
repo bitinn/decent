@@ -5,12 +5,12 @@
  * export main lib
  */
 
-var DQ = require('./lib/dq');
+var Decent = require('./lib/decent');
 
 module.exports = factory;
 
 /**
- * Create an instance of DQ
+ * Create an instance of Decent
  *
  * @param   String  name  Name of this queue
  * @param   Object  opts  Redis options
@@ -18,6 +18,6 @@ module.exports = factory;
  */
 function factory(name, opts) {
 
-	return new DQ(name, opts);
+	return new Decent(name, opts);
 
 };
