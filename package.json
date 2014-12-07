@@ -4,8 +4,9 @@
   "description": "Job queue is hard, so we make it decent for you.",
   "main": "index.js",
   "scripts": {
-    "test": "node node_modules/mocha/bin/mocha test/test.js",
-    "dev": "nodemon node_modules/mocha/bin/mocha --harmony test/test.js"
+    "test": "mocha test/test.js",
+    "dev": "nodemon ./node_modules/.bin/mocha --harmony test/test.js",
+    "coverage": "istanbul cover _mocha --report lcovonly -- -R spec test/test.js && cat ./coverage/lcov.info | coveralls"
   },
   "repository": {
     "type": "git",
@@ -30,6 +31,8 @@
   "devDependencies": {
     "chai": "^1.10.0",
     "chai-as-promised": "^4.1.1",
+    "coveralls": "^2.11.2",
+    "istanbul": "^0.3.4",
     "mocha": "^2.0.1",
     "nodemon": "^1.2.1",
     "sinon": "^1.12.1",
