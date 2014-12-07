@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node node_modules/mocha/bin/mocha --harmony test/test.js",
-    "dev": "node node_modules/mocha/bin/mocha --harmony -w test/test.js"
+    "dev": "nodemon node_modules/mocha/bin/mocha --harmony test/test.js"
   },
   "repository": {
     "type": "git",
@@ -30,6 +30,7 @@
     "chai": "^1.10.0",
     "chai-as-promised": "^4.1.1",
     "mocha": "^2.0.1",
+    "nodemon": "^1.2.1",
     "sinon": "^1.12.1",
     "sinon-chai": "^2.6.0"
   }

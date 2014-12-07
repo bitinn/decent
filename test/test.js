@@ -29,7 +29,7 @@ describe('dq', function() {
 		// purge test values after each test
 		return new Promise(function(resolve, reject) {
 			// not efficient or atomic purge, but good enough
-			queue.client.keys('dq:test:*', function(err, res) {
+			queue.client.keys(queue.prefix + ':*', function(err, res) {
 				if (err) {
 					reject(err);
 				} else if (!res || res.length === 0) {
@@ -57,6 +57,22 @@ describe('dq', function() {
 			expect(queue.name).to.equal('test');
 			expect(queue.port).to.equal(6379);
 			expect(queue.host).to.equal('127.0.0.1');
+
+			expect(queue.config).to.be.an('object');
+			expect(queue.config.blockTimeout).to.equal(30);
+			expect(queue.config.maxRetry).to.equal(3);
+
+			expect(queue.opts).to.be.an('object');
+
+			expect(queue.client).to.be.an.instanceof(EventEmitter);
+			expect(queue.bclient).to.be.an.instanceof(EventEmitter);
+
+			expect(queue.prefix).to.equal('dq:test');
+			expect(queue.workQueue).to.equal('dq:test:work');
+			expect(queue.runQueue).to.equal('dq:test:run');
+			expect(queue.failQueue).to.equal('dq:test:fail');
+
+			expect(queue.status_timeout).to.equal(1);
 		});
 
 		it('should allow custom redis options', function() {
@@ -64,7 +80,6 @@ describe('dq', function() {
 
 			expect(queue.port).to.equal('6379');
 			expect(queue.host).to.equal('localhost');
-			expect(queue.opts).to.be.an('object');
 			expect(queue.opts).to.have.property('connect_timeout', 5000);
 		});
 
@@ -73,7 +88,7 @@ describe('dq', function() {
 		});
 
 		it('should return an instance of event emitter', function() {
-			expect(queue).to.be.instanceof(EventEmitter);
+			expect(queue).to.be.an.instanceof(EventEmitter);
 		});
 	});
 
@@ -83,13 +98,13 @@ describe('dq', function() {
 		});
 
 		it('should increment queue id and return it', function() {
-			queue.client.set('dq:test:id', 5);
+			queue.client.set(queue.prefix + ':id', 5);
 
 			return expect(queue.nextId()).to.eventually.equal(6);
 		});
 
 		it('should reject if queue id is not number', function() {
-			queue.client.hmset('dq:test:id', { a: 1 });
+			queue.client.hmset(queue.prefix + ':id', { a: 1 });
 
 			return expect(queue.nextId()).to.eventually.be.rejectedWith(Error);
 		});
@@ -129,26 +144,6 @@ describe('dq', function() {
 			});
 
 			return expect(queue.nextJob()).to.eventually.equal(queue.status_timeout);
-		});
-
-		it('should reject if job data is missing', function() {
-			queue.client.lpush('dq:test:work', '1');
-
-			return expect(queue.nextJob()).to.eventually.be.rejectedWith(Error);
-		});
-
-		it('should reject if job is invalid', function() {
-			var job = {
-				id: '1'
-				, data: 'a:1'
-				, retry: '0'
-				, timeout: '60'
-			};
-
-			queue.client.hmset('dq:test:1', job);
-			queue.client.lpush('dq:test:work', '1');
-
-			return expect(queue.nextJob()).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -257,14 +252,14 @@ describe('dq', function() {
 			});
 		});
 
-		it('should emit event on error and exit', function() {
+		it('should emit event on error exit', function() {
 			var error = new Error('some error');
 
 			var stub = sinon.stub(queue, 'run');
 			stub.returns(Promise.reject(error));
 
 			var spy = sinon.spy();
-			queue.on('queue error', spy);
+			queue.on('queue exit', spy);
 
 			return queue.listen().then(function() {
 				expect(spy).to.have.been.calledOnce;
@@ -290,6 +285,34 @@ describe('dq', function() {
 				expect(s1).to.have.been.calledTwice;
 				expect(s2).to.have.been.calledTwice;
 				expect(err).to.equal(error);
+			});
+		});
+
+		it('should repeatedly run until shutdown', function() {
+			var p = function() {
+				return new Promise(function(resolve, reject) {
+					setTimeout(function() {
+						resolve();
+					}, 10);
+				});
+			};
+
+			var s0 = sinon.stub(queue, 'nextJob', p);
+			var s1 = sinon.stub(queue, 'handleStatus', p);
+			var s2 = sinon.stub(queue, 'handleJob', p);
+
+			var spy = sinon.spy();
+			queue.on('queue stop', spy);
+
+			setTimeout(function() {
+				queue.shutdown = true;
+			}, 25);
+
+			return queue.run().then(function() {
+				expect(s0).to.have.been.calledOnce;
+				expect(s1).to.have.been.calledOnce;
+				expect(s2).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledOnce;
 			});
 		});
 	});
@@ -318,73 +341,288 @@ describe('dq', function() {
 	});
 
 	describe('handleJob', function() {
-		it('should run handler to process job', function() {
+		it('should throw error if handler is missing', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			expect(function() { queue.handleJob(job) }).to.throw(Error);
 		});
 
-		it('should emit error from handler', function() {
+		it('should run handler to process job', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			var spy = sinon.spy();
+			queue.handler = spy;
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(job);
+			});
+		});
+
+		it('should emit job done event', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function() {};
+
+			var spy = sinon.spy();
+			queue.on('queue ok', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(job);
+			});
 		});
 
 		it('should move job to another queue if handler throw error', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			var error = new Error('some error');
+			var s0 = sinon.stub();
+			var s1 = sinon.stub(queue, 'moveJob');
+			s0.throws(error);
+			s1.returns(Promise.resolve(true));
+
+			queue.handler = s0;
+
+			return queue.handleJob(job).then(function() {
+				expect(s0).to.have.been.calledOnce;
+				expect(s0).to.have.been.calledWith(job);
+				expect(s1).to.have.been.calledOnce;
+				expect(s1).to.have.been.calledWith(job);
+			});
+		});
+
+		it('should emit error from handler', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			var error = new Error('some error');
+			var s0 = sinon.stub();
+			var s1 = sinon.stub(queue, 'moveJob');
+			var spy = sinon.spy();
+			s0.throws(error);
+			s1.returns(Promise.resolve(true));
+
+			queue.handler = s0;
+			queue.on('queue error', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(error);
+			});
 		});
 
 		it('should remove job if handler ran successfully', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function() {};
+
+			return queue.handleJob(job).then(function() {
+				return queue.count('run').then(function(count) {
+					expect(count).to.equal(0);
+				});
+			});
 		});
 
-		it('should remove job if handler is missing', function() {
+		it('should reject if purge command return unexpected result', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
-		});
+			queue.handler = function() {};
 
-		it('should reject if any command failed', function() {
-
+			return expect(queue.handleJob(job)).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
 	describe('moveJob', function() {
 		it('should move job into work queue when retry available', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return queue.moveJob(job).then(function() {
+				return queue.count('work').then(function(count) {
+					expect(count).to.equal(1);
+				});
+			});
 		});
 
 		it('should move job into fail queue when retry limit reached', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 3
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return queue.moveJob(job).then(function() {
+				return queue.count('fail').then(function(count) {
+					expect(count).to.equal(1);
+				});
+			});
 		});
 
 		it('should increment job retry count', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return queue.moveJob(job).then(function() {
+				return queue.get(job.id).then(function(job) {
+					expect(job.retry).to.equal(1);
+				});
+			});
 		});
 
-		it('should reject if any command failed', function() {
+		it('should reject if move command return unexpected result', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
 
+			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
-	describe('runFailJobs', function() {
-		it('should queue failed jobs back to work queue as new jobs', function() {
-
+	describe('stop', function() {
+		it('should set shutdown to true', function() {
+			queue.stop();
+			expect(queue.shutdown).to.be.true;
 		});
 	});
 
 	describe('count', function() {
-		it('should return work queue job count', function() {
+		it('should return work queue job count by default', function() {
 			return queue.add({ a: 1 }).then(function() {
 				return expect(queue.count()).to.eventually.equal(1);
 			});
 		});
 
-		it('should reject if queue is invalid', function() {
-			queue.client.set('dq:test:work', 1);
+		it('should return queue job count for specified queue', function() {
+			queue.client.lpush(queue.runQueue, 1);
+
+			return expect(queue.count('run')).to.eventually.equal(1);
+		});
+
+		it('should reject if queue name is invalid', function() {
+			return expect(queue.count('invalid')).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if queue data is invalid', function() {
+			queue.client.set(queue.workQueue, 1);
 
 			return expect(queue.count()).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
+	describe('get', function() {
+		it('should return the job', function() {
+			return queue.add({ a: 1 }).then(function() {
+				return expect(queue.get(1)).to.eventually.be.fulfilled;
+			});
+		});
+
+		it('should return the job properly formatted', function() {
+			return queue.add({ a: 1 }).then(function(j1) {
+				return queue.get(1).then(function(j2) {
+					expect(j2.id).to.equal(j1.id);
+					expect(j2.data).to.deep.equal(j1.data);
+					expect(j2.retry).to.equal(j1.retry);
+					expect(j2.timeout).to.equal(j1.timeout);
+				});
+			});
+		});
+
+		it('should reject if job data is missing', function() {
+			return expect(queue.get(1)).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if job data is invalid', function() {
+			var job = {
+				id: '1'
+				, data: 'a:1'
+				, retry: '0'
+				, timeout: '60'
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, job);
+
+			return expect(queue.get(job.id)).to.eventually.be.rejectedWith(Error);
+		});
+	});
+
 	describe('add', function() {
 		it('should add a new job to queue', function() {
-			return queue.add({ a: 1 }).then(function() {
-				queue.client.hgetall('dq:test:1', function(err, res) {
+			return queue.add({ a: 1 }).then(function(job) {
+				queue.client.hgetall(queue.prefix + ':' + job.id, function(err, res) {
 					expect(res.id).to.equal('1');
 					expect(res.data).to.equal(JSON.stringify({ a: 1 }));
 					expect(res.retry).to.equal('0');
@@ -414,7 +652,7 @@ describe('dq', function() {
 		it('should overwrite existing job, and requeue job id', function() {
 			return queue.add({ a: 1 }, { timeout: 120 }).then(function(job) {
 				return queue.add({ b: 1 }, { id: job.id }).then(function() {
-					queue.client.hgetall('dq:test:1', function(err, res) {
+					queue.client.hgetall(queue.prefix + ':' + job.id, function(err, res) {
 						expect(res.id).to.equal('1');
 						expect(res.data).to.equal(JSON.stringify({ b: 1 }));
 						expect(res.retry).to.equal('0');
@@ -451,7 +689,7 @@ describe('dq', function() {
 		});
 
 		it('should emit event when failed', function() {
-			queue.client.set('dq:test:work', 1);
+			queue.client.set(queue.workQueue, 1);
 
 			var spy = sinon.spy();
 			queue.on('add error', spy);
@@ -533,15 +771,50 @@ describe('dq', function() {
 		});
 	});
 
-	describe('Real-world tests', function() {
-		it('should process jobs', function() {
+	describe('real world', function() {
+		it('should process async jobs', function(done) {
+			var handler = sinon.spy();
+			queue.worker(handler);
 
+			var spy = sinon.spy();
+			queue.on('queue ok', spy);
+
+			setTimeout(function() {
+				queue.add({ a: 1 });
+			}, 25);
+			
+			queue.on('queue ok', function(job) {
+				expect(handler).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledOnce;
+				expect(job.data).to.have.property('a', 1);
+				
+				queue.removeAllListeners('queue ok');
+				queue.stop();
+				done();
+			});
+		});
+
+		it('should allow parallebl job creation', function() {
+			var p = Promise.all([
+				queue.add({ a: 1 })
+				, queue.add({ b: 1 })
+				, queue.add({ c: 1 })
+				, queue.add({ d: 1 })
+				, queue.add({ e: 1 })
+			]);
+			
+			return p.then(function(res) {
+				expect(res).to.have.length(5);
+				return queue.count().then(function(count) {
+					expect(count).to.equal(5);
+				});
+			});
 		});
 	});
 
-	describe('end', function() {
+	describe('wrap up', function() {
 		it('should not leave test data in redis', function(done) {
-			queue.client.keys('dq:test:*', function(err, res) {
+			queue.client.keys(queue.prefix + ':*', function(err, res) {
 				expect(err).to.be.null;
 				expect(res).to.be.empty;
 				done();
