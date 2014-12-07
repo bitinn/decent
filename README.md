@@ -19,13 +19,9 @@ In short, we need better groundwork before we can harness the power of queue. He
 # Features
 
 - Simple API and helpers, powered by `Promise`.
-
 - Full code coverage is a basic requirement, on average at least 3 test cases for each API, and we put extra emphasis on negative tests, because that's where most queue fall and cause headaches.
-
 - Annotated source code, less than 1,000 loc in total.
-
 - No dependency besides `redis` driver, make use of native promise whenever possible, fallback to `bluebird` for older Node release.
-
 - Rich event to aid automation, monitoring and building larger pipeline.
 
 
