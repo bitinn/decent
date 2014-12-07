@@ -4,9 +4,9 @@ decent
 
 [![npm version](https://badge.fury.io/js/decent.svg)](http://badge.fury.io/js/decent) [![Build Status](https://travis-ci.org/bitinn/decent.svg?branch=master)](https://travis-ci.org/bitinn/decent) [![Coverage Status](https://img.shields.io/coveralls/bitinn/decent.svg)](https://coveralls.io/r/bitinn/decent)
 
-Job queue is hard, so we make it decent for you.
-
 `decent` is a Redis-based job queue for Node.
+
+*Job queue is hard to manage, we make it decent for you.*
 
 
 # Motivation
