@@ -6,3 +6,4 @@ node_js:
 services:
   - redis-server
 before_install: npm install -g npm
+script: npm run coverage
