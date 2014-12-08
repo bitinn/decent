@@ -14,6 +14,7 @@ var expect = chai.expect;
 var decent = require('../index.js');
 var EventEmitter = require('events').EventEmitter;
 var Promise = require('native-or-bluebird');
+var Redis = require('fakeredis');
 
 // global vars
 var queue;
@@ -144,6 +145,16 @@ describe('decent', function() {
 			});
 
 			return expect(queue.nextJob()).to.eventually.equal(queue.status_timeout);
+		});
+
+		it('should reject on connection failure', function() {
+			var p = queue.nextJob();
+
+			setTimeout(function() {
+				queue.bclient.stream.destroy();
+			}, 25);
+
+			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -319,12 +330,19 @@ describe('decent', function() {
 
 	describe('handleStatus', function() {
 		it('should get next job again if input is status_timeout', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
 			var stub = sinon.stub(queue, 'nextJob');
-			stub.returns(Promise.resolve(true));
+			stub.returns(Promise.resolve(job));
 
 			return queue.handleStatus(queue.status_timeout).then(function(res) {
 				expect(stub).to.have.been.calledOnce;
-				expect(res).to.be.true;
+				expect(res).to.equal(job);
 			});
 		});
 
@@ -450,39 +468,6 @@ describe('decent', function() {
 				expect(spy).to.have.been.calledWith(error);
 			});
 		});
-
-		it('should remove job if handler ran successfully', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
-			queue.client.lpush(queue.runQueue, job.id);
-
-			queue.handler = function() {};
-
-			return queue.handleJob(job).then(function() {
-				return queue.count('run').then(function(count) {
-					expect(count).to.equal(0);
-				});
-			});
-		});
-
-		it('should reject if purge command return unexpected result', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.handler = function() {};
-
-			return expect(queue.handleJob(job)).to.eventually.be.rejectedWith(Error);
-		});
 	});
 
 	describe('moveJob', function() {
@@ -540,6 +525,23 @@ describe('decent', function() {
 			});
 		});
 
+		it('should reject on connection failure', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			var p = queue.moveJob(job);
+			queue.client.stream.destroy();
+
+			return expect(p).to.eventually.be.rejectedWith(Error);
+		});
+
 		it('should reject if move command return unexpected result', function() {
 			var job = {
 				id: 1
@@ -549,6 +551,55 @@ describe('decent', function() {
 			};
 
 			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
+		});
+	});
+
+	describe('remove', function() {
+		it('should remove job from queue and purge job data', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return queue.remove(job.id).then(function() {
+				return queue.count('run').then(function(count) {
+					expect(count).to.equal(0);
+					return expect(queue.get(job.id)).to.eventually.be.rejectedWith(Error);
+				});
+			});
+		});
+
+		it('should reject on connection failure', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			var p = queue.remove(job.id);
+			queue.client.stream.destroy();
+
+			return expect(p).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if remove command return unexpected result', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -584,21 +635,41 @@ describe('decent', function() {
 	});
 
 	describe('get', function() {
+		it('should reject if no id given', function() {
+			return expect(queue.get()).to.eventually.be.rejectedWith(Error);
+		});
+
 		it('should return the job', function() {
-			return queue.add({ a: 1 }).then(function() {
-				return expect(queue.get(1)).to.eventually.be.fulfilled;
+			return queue.add({ a: 1 }).then(function(job) {
+				return expect(queue.get(job.id)).to.eventually.be.fulfilled;
 			});
 		});
 
 		it('should return the job properly formatted', function() {
 			return queue.add({ a: 1 }).then(function(j1) {
-				return queue.get(1).then(function(j2) {
+				return queue.get(j1.id).then(function(j2) {
 					expect(j2.id).to.equal(j1.id);
 					expect(j2.data).to.deep.equal(j1.data);
 					expect(j2.retry).to.equal(j1.retry);
 					expect(j2.timeout).to.equal(j1.timeout);
 				});
 			});
+		});
+
+		it('should reject on connection failure', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+
+			var p = queue.get(job.id);
+			queue.client.stream.destroy();
+
+			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should reject if job data is missing', function() {
@@ -620,6 +691,14 @@ describe('decent', function() {
 	});
 
 	describe('add', function() {
+		it('should reject empty data', function() {
+			return expect(queue.add()).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject non-object data', function() {
+			return expect(queue.add('invalid')).to.eventually.be.rejectedWith(Error);
+		});
+
 		it('should add a new job to queue', function() {
 			return queue.add({ a: 1 }).then(function(job) {
 				queue.client.hgetall(queue.prefix + ':' + job.id, function(err, res) {
@@ -696,6 +775,13 @@ describe('decent', function() {
 
 			return expect(queue.add({ a: 1 })).to.eventually.be.rejectedWith(Error);
 		});
+
+		it('should reject on connection failure', function() {
+			var p = queue.add({ a: 1 });
+			queue.client.stream.destroy();
+
+			return expect(p).to.eventually.be.rejectedWith(Error);
+		});
 	});
 
 	describe('clientReady', function() {
@@ -728,6 +814,9 @@ describe('decent', function() {
 
 			var err = new Error('some error');
 			queue.client.emit('error', err);
+
+			var nonerr = 'not a error';
+			queue.client.emit('error', nonerr);
 
 			expect(spy).to.have.been.calledOnce;
 			expect(spy).to.have.been.calledWith(err);
