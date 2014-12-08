@@ -14,7 +14,6 @@ var expect = chai.expect;
 var decent = require('../index.js');
 var EventEmitter = require('events').EventEmitter;
 var Promise = require('native-or-bluebird');
-var Redis = require('fakeredis');
 
 // global vars
 var queue;
@@ -263,6 +262,18 @@ describe('decent', function() {
 			});
 		});
 
+		it('should emit event on start', function() {
+			var stub = sinon.stub(queue, 'run');
+			stub.returns(Promise.resolve(true));
+
+			var spy = sinon.spy();
+			queue.on('queue start', spy);
+
+			return queue.listen().then(function() {
+				expect(spy).to.have.been.calledOnce;
+			});
+		});
+
 		it('should emit event on error exit', function() {
 			var error = new Error('some error');
 
@@ -359,7 +370,7 @@ describe('decent', function() {
 	});
 
 	describe('handleJob', function() {
-		it('should throw error if handler is missing', function() {
+		it('should reject if handler is missing', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
@@ -370,7 +381,122 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
-			expect(function() { queue.handleJob(job) }).to.throw(Error);
+			var spy = sinon.spy();
+			queue.on('queue error', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+			});
+		});
+
+		it('should support job timeout', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				// don't do this, only integer are supported
+				// this is to fake timeout
+				, timeout: 0.01
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { done() };
+			var stub = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done();
+				}, 50);
+			});
+
+			var spy = sinon.spy();
+			queue.on('queue error', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+			});
+		});
+
+		it('should support disabling job timeout', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 0
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { done() };
+			var stub = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done();
+				}, 50);
+			});
+
+			var spy = sinon.spy();
+			queue.on('queue ok', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(stub).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledOnce;
+			});
+		});
+
+		it('should catch handler error', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 0
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { 
+				nonexist(); 
+				done();
+			};
+
+			var spy = sinon.spy();
+			queue.on('queue error', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+			});
+		});
+
+		it('should allow worker function to trigger error', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { done() };
+			var error = new Error('some error');
+			var stub = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done(error);
+				}, 25);
+			});
+
+			var spy = sinon.spy();
+			queue.on('queue error', spy);
+
+			return queue.handleJob(job).then(function() {
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(error);
+			});
 		});
 
 		it('should run handler to process job', function() {
@@ -384,12 +510,14 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
-			var spy = sinon.spy();
-			queue.handler = spy;
+			queue.handler = function(job, done) { done() };
+			var stub = sinon.stub(queue, 'handler', function(job, done) {
+				done();
+			});
 
 			return queue.handleJob(job).then(function() {
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(job);
+				expect(stub).to.have.been.calledOnce;
+				expect(stub).to.have.been.calledWith(job);
 			});
 		});
 
@@ -404,7 +532,7 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
-			queue.handler = function() {};
+			queue.handler = function(job, done) { done() };
 
 			var spy = sinon.spy();
 			queue.on('queue ok', spy);
@@ -412,33 +540,6 @@ describe('decent', function() {
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
 				expect(spy).to.have.been.calledWith(job);
-			});
-		});
-
-		it('should move job to another queue if handler throw error', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
-			queue.client.lpush(queue.runQueue, job.id);
-
-			var error = new Error('some error');
-			var s0 = sinon.stub();
-			var s1 = sinon.stub(queue, 'moveJob');
-			s0.throws(error);
-			s1.returns(Promise.resolve(true));
-
-			queue.handler = s0;
-
-			return queue.handleJob(job).then(function() {
-				expect(s0).to.have.been.calledOnce;
-				expect(s0).to.have.been.calledWith(job);
-				expect(s1).to.have.been.calledOnce;
-				expect(s1).to.have.been.calledWith(job);
 			});
 		});
 
@@ -453,19 +554,52 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
+			queue.handler = function(job, done) { done() };
+
 			var error = new Error('some error');
-			var s0 = sinon.stub();
+			var s0 = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done(error);
+				}, 25);
+			});
 			var s1 = sinon.stub(queue, 'moveJob');
-			var spy = sinon.spy();
-			s0.throws(error);
 			s1.returns(Promise.resolve(true));
 
-			queue.handler = s0;
+			var spy = sinon.spy();
 			queue.on('queue error', spy);
 
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
 				expect(spy).to.have.been.calledWith(error);
+			});
+		});
+
+		it('should move job to another queue if handler throw error', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { done() };
+
+			var s0 = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done(new Error('some error'));
+				}, 25);
+			});
+			var s1 = sinon.stub(queue, 'moveJob');
+			s1.returns(Promise.resolve(true));
+
+			return queue.handleJob(job).then(function() {
+				expect(s0).to.have.been.calledOnce;
+				expect(s0).to.have.been.calledWith(job);
+				expect(s1).to.have.been.calledOnce;
+				expect(s1).to.have.been.calledWith(job);
 			});
 		});
 	});
@@ -542,13 +676,27 @@ describe('decent', function() {
 			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 
-		it('should reject if move command return unexpected result', function() {
+		it('should reject if job id is missing', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
 			};
+
+			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if job data is partial', function() {
+			var job = {
+				id: 1
+				, data: '{"a":1}'
+				//, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, job);
+			queue.client.lpush(queue.runQueue, job.id);
 
 			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
 		});
@@ -591,7 +739,7 @@ describe('decent', function() {
 			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 
-		it('should reject if remove command return unexpected result', function() {
+		it('should reject if job id is missing', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
@@ -601,12 +749,33 @@ describe('decent', function() {
 
 			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
 		});
+
+		it('should reject if job data is missing', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
+		});
 	});
 
 	describe('stop', function() {
 		it('should set shutdown to true', function() {
 			queue.stop();
 			expect(queue.shutdown).to.be.true;
+		});
+	});
+
+	describe('restart', function() {
+		it('should restart listener', function() {
+			var stub = sinon.stub(queue, 'listen');
+			queue.restart();
+			expect(stub).to.have.been.calledOnce;
 		});
 	});
 
@@ -778,6 +947,8 @@ describe('decent', function() {
 
 		it('should reject on connection failure', function() {
 			var p = queue.add({ a: 1 });
+
+			// TODO: trigger exec error handling, currently the error is from redis client
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
@@ -862,30 +1033,34 @@ describe('decent', function() {
 		});
 	});
 
-	describe('real world', function() {
-		it('should process async jobs', function(done) {
-			var handler = sinon.spy();
+	describe('use case', function() {
+		it('should process jobs async', function(testEnd) {
+			var handler = function(job, done) { 
+				setTimeout(function() {
+					done();
+				}, 25);
+			};
 			queue.worker(handler);
 
-			var spy = sinon.spy();
-			queue.on('queue ok', spy);
+			var s1 = sinon.spy(queue, 'handler');
+			var s2 = sinon.spy();
+			queue.on('queue ok', s2);
 
 			setTimeout(function() {
 				queue.add({ a: 1 });
 			}, 25);
 			
 			queue.on('queue ok', function(job) {
-				expect(handler).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledOnce;
+				expect(s1).to.have.been.calledOnce;
+				expect(s2).to.have.been.calledOnce;
 				expect(job.data).to.have.property('a', 1);
 
-				queue.removeAllListeners('queue ok');
 				queue.stop();
-				done();
+				testEnd();
 			});
 		});
 
-		it('should allow parallebl job creation', function() {
+		it('should allow parallel job creation', function() {
 			var p = Promise.all([
 				queue.add({ a: 1 })
 				, queue.add({ b: 1 })
@@ -904,11 +1079,11 @@ describe('decent', function() {
 	});
 
 	describe('wrap up', function() {
-		it('should not leave test data in redis', function(done) {
+		it('should not leave test data in redis', function(testEnd) {
 			queue.client.keys(queue.prefix + ':*', function(err, res) {
 				expect(err).to.be.null;
 				expect(res).to.be.empty;
-				done();
+				testEnd();
 			});
 		});
 	});
