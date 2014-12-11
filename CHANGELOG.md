@@ -1,8 +1,16 @@
 
-changelog
+Changelog
 =========
 
-# v1 release
+
+# 0.1.x release
+
+## v0.1.6
+
+- Enhance: stalled runQueue job are moved to workQueue on startup
+- Enhance: update to verbose error message
+- Enhance: reached 100% code coverage
+- Enhance: mark api as public/private
 
 ## v0.1.5
 

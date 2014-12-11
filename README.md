@@ -19,8 +19,9 @@ In short, we need better groundwork before we can harness the power of queue. He
 # Features
 
 - **Simple API**, powered by `Promise`, works in harmony with your generator library.
+- **Automatic job clean up and recovery**, no need to purge jobs manually.
 - **Proper code coverage**, we put extra emphasis on negative tests, because that's when most queues fall apart and cause headaches.
-- **Annotated source code**, less than 700 loc in total.
+- **Annotated source code**, less than 800 loc in total.
 - No dependency besides `redis` driver, make use of native promise whenever possible, fallback to `bluebird` for older Node release.
 - Rich events to aid automation, status monitoring or building larger pipeline.
 
@@ -219,7 +220,7 @@ Feel feel to raise any issues or feature requests, note that we do intend to kee
 # Future plan
 
 - API for re-queueing failed jobs
-- Use-case examples
+- Use case examples
 - Web UI
 
 
