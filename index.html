@@ -34,7 +34,7 @@
           <h1>
 <a id="decent" class="anchor" href="#decent" aria-hidden="true"><span class="octicon octicon-link"></span></a>decent</h1>
 
-<p><a href="http://badge.fury.io/js/decent"><img src="https://badge.fury.io/js/decent.svg" alt="npm version"></a> <a href="https://travis-ci.org/bitinn/decent"><img src="https://travis-ci.org/bitinn/decent.svg?branch=master" alt="Build Status"></a> <a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg" alt="Coverage Status"></a> <a href="https://david-dm.org/bitinn/decent"><img src="https://david-dm.org/bitinn/decent.svg" alt="Dependency Status"></a></p>
+<p><a href="http://badge.fury.io/js/decent"><img src="https://badge.fury.io/js/decent.svg" alt="npm version"></a> <a href="https://travis-ci.org/bitinn/decent"><img src="https://travis-ci.org/bitinn/decent.svg" alt="Build Status"></a> <a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg" alt="Coverage Status"></a> <a href="https://david-dm.org/bitinn/decent"><img src="https://david-dm.org/bitinn/decent.svg" alt="Dependency Status"></a></p>
 
 <p><code>decent</code> is a Redis-based job queue for Node.</p>
 
@@ -54,9 +54,11 @@
 <li>
 <strong>Simple API</strong>, powered by <code>Promise</code>, works in harmony with your generator library.</li>
 <li>
+<strong>Automatic job clean up and recovery</strong>, no need to purge jobs manually.</li>
+<li>
 <strong>Proper code coverage</strong>, we put extra emphasis on negative tests, because that's when most queues fall apart and cause headaches.</li>
 <li>
-<strong>Annotated source code</strong>, less than 700 loc in total.</li>
+<strong>Annotated source code</strong>, less than 800 loc in total.</li>
 <li>No dependency besides <code>redis</code> driver, make use of native promise whenever possible, fallback to <code>bluebird</code> for older Node release.</li>
 <li>Rich events to aid automation, status monitoring or building larger pipeline.</li>
 </ul>
@@ -300,7 +302,7 @@ npm test
 
 <ul>
 <li>API for re-queueing failed jobs</li>
-<li>Use-case examples</li>
+<li>Use case examples</li>
 <li>Web UI</li>
 </ul>
 
