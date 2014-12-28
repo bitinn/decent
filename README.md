@@ -73,6 +73,8 @@ queue.add({ a: 1 }).then(function(job) {
 
 queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
 	console.log(job.data); // { a: 1, b: 1 }
+	console.log(job.retry); // 1
+	console.log(job.timeout); // 120
 });
 ```
 
@@ -97,10 +99,10 @@ Register a handler function that process jobs, and start processing jobs in queu
 
 ```
 queue.worker(function(job, done) {
-
-	// ... do actual work
-
-	done();
+	setTimeout(function() {
+		console.log(job.data);
+		done();
+	}, 100);
 });
 ```
 
@@ -147,15 +149,17 @@ queue.get(1).then(function(job) {
 ```
 
 
-## queue.remove(id)
+## queue.remove(id, name)
 
-Returns a promise that will resolve when job is removed from redis (both job data and job queue).
+Returns a promise that will resolve when job is removed from redis (both job data and job queue). Default queue is `work`.
+
+Note: `remove` does not return the job, use `get` then `remove` instead.
 
 ### examples
 
 ```
-queue.remove(1).then(function() {
-	// ...
+queue.remove(1, 'run').then(function() {
+	// job has been removed from redis
 });
 ```
 
@@ -167,6 +171,11 @@ Instructs queue worker to terminate gracefully on next loop. See events on how t
 ### examples
 
 ```
+// ... setup queue and worker
+
+queue.on('queue stop', function() {
+	console.log('queue stopped gracefully');
+});
 queue.stop();
 ```
 
@@ -178,6 +187,11 @@ Restarts the queue worker loop. See events on how to monitor queue.
 ### examples
 
 ```
+// ... setup queue and worker
+
+queue.on('queue start', function() {
+	console.log('queue restarted');
+});
 queue.restart();
 ```
 
