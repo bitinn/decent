@@ -1,37 +1,36 @@
-<!DOCTYPE html>
+<!doctype html>
 <html>
   <head>
-    <meta charset='utf-8'>
+    <meta charset="utf-8">
     <meta http-equiv="X-UA-Compatible" content="chrome=1">
-    <link href='https://fonts.googleapis.com/css?family=Chivo:900' rel='stylesheet' type='text/css'>
-    <link rel="stylesheet" type="text/css" href="stylesheets/stylesheet.css" media="screen">
-    <link rel="stylesheet" type="text/css" href="stylesheets/pygment_trac.css" media="screen">
-    <link rel="stylesheet" type="text/css" href="stylesheets/print.css" media="print">
+    <title>Decent by bitinn</title>
+
+    <link rel="stylesheet" href="stylesheets/styles.css">
+    <link rel="stylesheet" href="stylesheets/pygment_trac.css">
+    <script src="javascripts/scale.fix.js"></script>
+    <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
     <!--[if lt IE 9]>
     <script src="//html5shiv.googlecode.com/svn/trunk/html5.js"></script>
     <![endif]-->
-    <title>Decent by bitinn</title>
   </head>
-
   <body>
-    <div id="container">
-      <div class="inner">
+    <div class="wrapper">
+      <header>
+        <h1 class="header">Decent</h1>
+        <p class="header">A redis-based job queue for Node: job queue is hard, so we make it decent for you.</p>
 
-        <header>
-          <h1>Decent</h1>
-          <h2>A redis-based job queue for Node: job queue is hard, so we make it decent for you.</h2>
-        </header>
+        <ul>
+          <li class="download"><a class="buttons" href="https://github.com/bitinn/decent/zipball/master">Download ZIP</a></li>
+          <li class="download"><a class="buttons" href="https://github.com/bitinn/decent/tarball/master">Download TAR</a></li>
+          <li><a class="buttons github" href="https://github.com/bitinn/decent">View On GitHub</a></li>
+        </ul>
 
-        <section id="downloads" class="clearfix">
-          <a href="https://github.com/bitinn/decent/zipball/master" id="download-zip" class="button"><span>Download .zip</span></a>
-          <a href="https://github.com/bitinn/decent/tarball/master" id="download-tar-gz" class="button"><span>Download .tar.gz</span></a>
-          <a href="https://github.com/bitinn/decent" id="view-on-github" class="button"><span>View on GitHub</span></a>
-        </section>
+        <p class="header">This project is maintained by <a class="header name" href="https://github.com/bitinn">bitinn</a></p>
 
-        <hr>
 
-        <section id="main_content">
-          <h1>
+      </header>
+      <section>
+        <h1>
 <a id="decent" class="anchor" href="#decent" aria-hidden="true"><span class="octicon octicon-link"></span></a>decent</h1>
 
 <p><a href="http://badge.fury.io/js/decent"><img src="https://badge.fury.io/js/decent.svg" alt="npm version"></a> <a href="https://travis-ci.org/bitinn/decent"><img src="https://travis-ci.org/bitinn/decent.svg" alt="Build Status"></a> <a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg" alt="Coverage Status"></a> <a href="https://david-dm.org/bitinn/decent"><img src="https://david-dm.org/bitinn/decent.svg" alt="Dependency Status"></a></p>
@@ -120,6 +119,8 @@ var queue2 = decent('q2', {
 
 queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
     console.log(job.data); // { a: 1, b: 1 }
+    console.log(job.retry); // 1
+    console.log(job.timeout); // 120
 });
 </code></pre>
 
@@ -158,10 +159,10 @@ queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
 <a id="examples-2" class="anchor" href="#examples-2" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
 
 <pre><code>queue.worker(function(job, done) {
-
-    // ... do actual work
-
-    done();
+    setTimeout(function() {
+        console.log(job.data);
+        done();
+    }, 100);
 });
 </code></pre>
 
@@ -209,15 +210,17 @@ queue.count('fail').then(function(count) {
 </code></pre>
 
 <h2>
-<a id="queueremoveid" class="anchor" href="#queueremoveid" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.remove(id)</h2>
+<a id="queueremoveid-name" class="anchor" href="#queueremoveid-name" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue.remove(id, name)</h2>
 
-<p>Returns a promise that will resolve when job is removed from redis (both job data and job queue).</p>
+<p>Returns a promise that will resolve when job is removed from redis (both job data and job queue). Default queue is <code>work</code>.</p>
+
+<p>Note: <code>remove</code> does not return the job, use <code>get</code> then <code>remove</code> instead.</p>
 
 <h3>
 <a id="examples-5" class="anchor" href="#examples-5" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
 
-<pre><code>queue.remove(1).then(function() {
-    // ...
+<pre><code>queue.remove(1, 'run').then(function() {
+    // job has been removed from redis
 });
 </code></pre>
 
@@ -229,7 +232,12 @@ queue.count('fail').then(function(count) {
 <h3>
 <a id="examples-6" class="anchor" href="#examples-6" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
 
-<pre><code>queue.stop();
+<pre><code>// ... setup queue and worker
+
+queue.on('queue stop', function() {
+    console.log('queue stopped gracefully');
+});
+queue.stop();
 </code></pre>
 
 <h2>
@@ -240,7 +248,12 @@ queue.count('fail').then(function(count) {
 <h3>
 <a id="examples-7" class="anchor" href="#examples-7" aria-hidden="true"><span class="octicon octicon-link"></span></a>examples</h3>
 
-<pre><code>queue.restart();
+<pre><code>// ... setup queue and worker
+
+queue.on('queue start', function() {
+    console.log('queue restarted');
+});
+queue.restart();
 </code></pre>
 
 <h1>
@@ -269,9 +282,11 @@ queue.count('fail').then(function(count) {
 <li>
 <code>queue.emit('queue start')</code>: queue loop has started.</li>
 <li>
+<code>queue.emit('queue work', job)</code>: queue worker begin to process a <code>job</code>.</li>
+<li>
 <code>queue.emit('queue ok', job)</code>: queue worker has processed a <code>job</code>.</li>
 <li>
-<code>queue.emit('queue error', err)</code>: queue worker has failed to processed a job and thrown <code>err</code> (caught properly, so queue does not exit)</li>
+<code>queue.emit('queue error', err, job)</code>: queue worker has failed to processed a <code>job</code> and thrown <code>err</code> (caught properly, so queue does not exit)</li>
 <li>
 <code>queue.emit('queue exit', err)</code>: queue loop has terminated due to <code>err</code>.</li>
 <li>
@@ -283,9 +298,9 @@ queue.count('fail').then(function(count) {
 
 <ul>
 <li>
-<code>queue.emit('add ok', job)</code>: <code>job</code> has been added to queue.</li>
+<code>queue.emit('add ok', job)</code>: a <code>job</code> has been added to queue.</li>
 <li>
-<code>queue.emit('add error', err)</code>: failed to add job onto queue due to <code>err</code>.</li>
+<code>queue.emit('add error', err, job)</code>: failed to add a <code>job</code> onto queue due to <code>err</code>.</li>
 </ul>
 
 <h1>
@@ -301,7 +316,6 @@ npm test
 <a id="future-plan" class="anchor" href="#future-plan" aria-hidden="true"><span class="octicon octicon-link"></span></a>Future plan</h1>
 
 <ul>
-<li>API for re-queueing failed jobs</li>
 <li>Use case examples</li>
 <li>Web UI</li>
 </ul>
@@ -310,15 +324,12 @@ npm test
 <a id="license" class="anchor" href="#license" aria-hidden="true"><span class="octicon octicon-link"></span></a>License</h1>
 
 <p>MIT</p>
-        </section>
-
-        <footer>
-          Decent is maintained by <a href="https://github.com/bitinn">bitinn</a><br>
-          This page was generated by <a href="http://pages.github.com">GitHub Pages</a>. Tactile theme by <a href="https://twitter.com/jasonlong">Jason Long</a>.
-        </footer>
-
-        
-      </div>
+      </section>
+      <footer>
+        <p><small>Hosted on <a href="http://pages.github.com">GitHub Pages</a> using the Dinky theme</small></p>
+      </footer>
     </div>
+    <!--[if !IE]><script>fixScale(document);</script><![endif]-->
+		
   </body>
 </html>
