@@ -196,15 +196,16 @@ queue.restart();
 ## queue worker related
 
 - `queue.emit('queue start')`: queue loop has started.
+- `queue.emit('queue work', job)`: queue worker begin to process a `job`.
 - `queue.emit('queue ok', job)`: queue worker has processed a `job`.
-- `queue.emit('queue error', err)`: queue worker has failed to processed a job and thrown `err` (caught properly, so queue does not exit)
+- `queue.emit('queue error', err, job)`: queue worker has failed to processed a `job` and thrown `err` (caught properly, so queue does not exit)
 - `queue.emit('queue exit', err)`: queue loop has terminated due to `err`.
 - `queue.emit('queue stop')`: queue loop has stopped gracefully.
 
 ## queue client related
 
-- `queue.emit('add ok', job)`: `job` has been added to queue.
-- `queue.emit('add error', err)`: failed to add job onto queue due to `err`.
+- `queue.emit('add ok', job)`: a `job` has been added to queue.
+- `queue.emit('add error', err, job)`: failed to add a `job` onto queue due to `err`.
 
 
 # Development
@@ -219,7 +220,6 @@ Feel feel to raise any issues or feature requests, note that we do intend to kee
 
 # Future plan
 
-- API for re-queueing failed jobs
 - Use case examples
 - Web UI
 

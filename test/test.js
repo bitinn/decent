@@ -175,12 +175,22 @@ describe('decent', function() {
 		});
 
 		it('should emit event when failed', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 0
+				, timeout: 60
+			};
+
 			queue.client.set(queue.workQueue, 1);
 
 			var spy = sinon.spy();
 			queue.on('add error', spy);
 
-			return expect(queue.add({ a: 1 })).to.eventually.be.rejectedWith(Error);
+			return queue.add({ a: 1 }).catch(function(err) {
+				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+				expect(spy.args[0][1]).to.deep.equal(job);
+			});
 		});
 
 		it('should reject if redis return empty error', function() {
@@ -307,12 +317,16 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
-			return queue.remove(job.id).then(function() {
+			return queue.remove(job.id, 'run').then(function() {
 				return queue.count('run').then(function(count) {
 					expect(count).to.equal(0);
 					return expect(queue.get(job.id)).to.eventually.be.rejectedWith(Error);
 				});
 			});
+		});
+
+		it('should reject if queue name is invalid', function() {
+			return expect(queue.remove(1, 'invalid')).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should reject if redis return empty error', function() {
@@ -334,7 +348,7 @@ describe('decent', function() {
 				cb([], null);
 			});
 
-			return queue.remove({ a: 1 }).catch(function(err) {
+			return queue.remove({ a: 1 }, 'run').catch(function(err) {
 				sandbox.restore();
 
 				expect(s0).to.have.been.calledOnce;
@@ -356,7 +370,7 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
-			var p = queue.remove(job.id);
+			var p = queue.remove(job.id, 'run');
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
@@ -381,7 +395,7 @@ describe('decent', function() {
 				, timeout: 60
 			};
 
-			queue.client.lpush(queue.runQueue, job.id);
+			queue.client.lpush(queue.workQueue, job.id);
 
 			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
 		});
@@ -476,13 +490,13 @@ describe('decent', function() {
 
 	describe('restart', function() {
 		it('should restart listener', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			queue.restart();
 			expect(stub).to.have.been.calledOnce;
 		});
 
 		it('should throw error if already running', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			queue.running = true;
 			expect(function() { queue.restart(); }).to.throw(Error);
 			expect(stub).to.not.have.been.called;
@@ -491,7 +505,7 @@ describe('decent', function() {
 
 	describe('worker', function() {
 		it('should register a job handler', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			var handler = function() {};
 
 			queue.worker(handler);
@@ -499,14 +513,14 @@ describe('decent', function() {
 		});
 
 		it('should throw error if handler is not function', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			var handler = 1;
 
 			expect(function() { queue.worker(handler) }).to.throw(Error);
 		});
 
 		it('should throw error if handler exists', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			var handler = function() {};
 
 			queue.handler = handler;
@@ -514,7 +528,7 @@ describe('decent', function() {
 		});
 
 		it('should kick start queue listener', function() {
-			var stub = sinon.stub(queue, 'listen');
+			var stub = sinon.stub(queue, 'start');
 			var handler = function() {};
 
 			queue.worker(handler);
@@ -522,14 +536,13 @@ describe('decent', function() {
 		});
 	});
 
-	describe('listen', function() {
+	describe('start', function() {
 		it('should kick start run process', function() {
 			var stub = sinon.stub(queue, 'run');
 			stub.returns(Promise.resolve(true));
 
-			return queue.listen().then(function() {
-				expect(stub).to.have.been.calledOnce;
-			});
+			queue.start();
+			expect(stub).to.have.been.calledOnce;
 		});
 
 		it('should emit event on start', function() {
@@ -539,68 +552,82 @@ describe('decent', function() {
 			var spy = sinon.spy();
 			queue.on('queue start', spy);
 
-			return queue.listen().then(function() {
-				expect(spy).to.have.been.calledOnce;
-			});
+			queue.start();
+			expect(spy).to.have.been.calledOnce;
 		});
 
-		it('should emit event on error exit', function() {
-			var error = new Error('some error');
+		it('should set running to true', function() {
+			expect(queue.running).to.be.false;
 
 			var stub = sinon.stub(queue, 'run');
-			stub.returns(Promise.reject(error));
+			stub.returns(Promise.resolve(true));
 
-			var spy = sinon.spy();
-			queue.on('queue exit', spy);
-
-			return queue.listen().then(function() {
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(error);
-			});
+			queue.start();
+			expect(queue.running).to.be.true;
 		});
 	});
 
 	describe('run', function() {
-		it('should repeatedly run until error', function() {
+		it('should repeatedly run until error', function(done) {
 			var error = new Error('some error');
 
+			var s0 = sinon.stub(queue, 'recoverJob');
 			var s1 = sinon.stub(queue, 'readJob');
 			var s2 = sinon.stub(queue, 'handleJob');
+
+			s0.returns(Promise.resolve(true));
 			s1.returns(Promise.resolve(true));
 			s2.onCall(0).returns(Promise.resolve(true));
 			s2.onCall(1).returns(Promise.reject(error));
 
-			return queue.run().catch(function(err) {
-				expect(s1).to.have.been.calledTwice;
-				expect(s2).to.have.been.calledTwice;
-				expect(err).to.equal(error);
+			queue.on('queue exit', function(err) {
+				try {
+					expect(s0).to.have.been.calledTwice;
+					expect(s1).to.have.been.calledTwice;
+					expect(s2).to.have.been.calledTwice;
+					expect(queue.running).to.be.false;
+					expect(queue.shutdown).to.be.false;
+					expect(err).to.equal(error);
+					done();
+				} catch(e) {
+					done(e);
+				}
 			});
+
+			queue.run();
 		});
 
-		it('should repeatedly run until shutdown', function() {
+		it('should repeatedly run until shutdown', function(done) {
 			var p = function() {
 				return new Promise(function(resolve, reject) {
 					setTimeout(function() {
 						resolve();
-					}, 25);
+					}, 5);
 				});
 			};
 
+			var s0 = sinon.stub(queue, 'recoverJob', p);
 			var s1 = sinon.stub(queue, 'readJob', p);
 			var s2 = sinon.stub(queue, 'handleJob', p);
 
-			var spy = sinon.spy();
-			queue.on('queue stop', spy);
-
 			setTimeout(function() {
 				queue.shutdown = true;
-			}, 80);
+			}, 25);
 
-			return queue.run().then(function() {
-				expect(s1).to.have.been.calledTwice;
-				expect(s2).to.have.been.calledTwice;
-				expect(spy).to.have.been.calledOnce;
+			queue.on('queue stop', function() {
+				try {
+					expect(s0).to.have.been.calledTwice;
+					expect(s1).to.have.been.calledTwice;
+					expect(s2).to.have.been.calledTwice;
+					expect(queue.running).to.be.false;
+					expect(queue.shutdown).to.be.false;
+					done();
+				} catch(e) {
+					done(e);
+				}
 			});
+
+			queue.run();
 		});
 	});
 
@@ -652,6 +679,7 @@ describe('decent', function() {
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
 				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+				expect(spy.args[0][1]).to.equal(job);
 			});
 		});
 
@@ -681,6 +709,7 @@ describe('decent', function() {
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
 				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+				expect(spy.args[0][1]).to.equal(job);
 			});
 		});
 
@@ -733,6 +762,7 @@ describe('decent', function() {
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
 				expect(spy.args[0][0]).to.be.an.instanceof(Error);
+				expect(spy.args[0][1]).to.equal(job);
 			});
 		});
 
@@ -760,7 +790,7 @@ describe('decent', function() {
 
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(error);
+				expect(spy).to.have.been.calledWith(error, job);
 			});
 		});
 
@@ -786,7 +816,7 @@ describe('decent', function() {
 			});
 		});
 
-		it('should emit job done event', function() {
+		it('should emit job events', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
@@ -799,12 +829,17 @@ describe('decent', function() {
 
 			queue.handler = function(job, done) { done() };
 
-			var spy = sinon.spy();
-			queue.on('queue ok', spy);
+			var s1 = sinon.spy();
+			queue.on('queue work', s1);
+
+			var s2 = sinon.spy();
+			queue.on('queue ok', s2);
 
 			return queue.handleJob(job).then(function() {
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(job);
+				expect(s1).to.have.been.calledOnce;
+				expect(s1).to.have.been.calledWith(job);
+				expect(s2).to.have.been.calledOnce;
+				expect(s2).to.have.been.calledWith(job);
 			});
 		});
 
@@ -835,7 +870,7 @@ describe('decent', function() {
 
 			return queue.handleJob(job).then(function() {
 				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(error);
+				expect(spy).to.have.been.calledWith(error, job);
 			});
 		});
 

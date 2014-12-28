@@ -2,6 +2,15 @@
 Changelog
 =========
 
+# 0.2.x release
+
+## v0.2.0
+
+- Change: rename private api `listen` to `start` 
+- Feature: new event `queue work` before worker start processing each job
+- Feature: `add error` and `queue error` events now emits related job as second parameter
+- Feature: `remove` can now remove job from any queue
+- Enhance: prevent potential memory leak with `run` loop due to long promise chain
 
 # 0.1.x release
 
