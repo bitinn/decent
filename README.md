@@ -246,10 +246,10 @@ Feel feel to raise any issues or feature requests, note that we do intend to kee
 MIT
 
 [npm-image]: https://img.shields.io/npm/v/decent.svg?style=flat-square
-[npm-url]: https://npmjs.org/package/decent
+[npm-url]: https://www.npmjs.com/package/decent
 [travis-image]: https://img.shields.io/travis/bitinn/decent.svg?style=flat-square
 [travis-url]: https://travis-ci.org/bitinn/decent
 [coveralls-image]: https://img.shields.io/coveralls/bitinn/decent.svg?style=flat-square
 [coveralls-url]: https://coveralls.io/r/bitinn/decent
 [david-image]: https://img.shields.io/david/bitinn/decent.svg?style=flat-square
-[david-url]: https://david-dm.org/bitinn/decent.svg
+[david-url]: https://david-dm.org/bitinn/decent
