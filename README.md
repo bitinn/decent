@@ -2,7 +2,10 @@
 decent
 ======
 
-[![npm version](https://badge.fury.io/js/decent.svg)](http://badge.fury.io/js/decent) [![Build Status](https://travis-ci.org/bitinn/decent.svg)](https://travis-ci.org/bitinn/decent) [![Coverage Status](https://img.shields.io/coveralls/bitinn/decent.svg)](https://coveralls.io/r/bitinn/decent) [![Dependency Status](https://david-dm.org/bitinn/decent.svg)](https://david-dm.org/bitinn/decent)
+[![npm version][npm-image]][npm-url]
+[![build status][travis-image]][travis-url]
+[![coverage status][coveralls-image]][coveralls-url]
+[![dependency status][david-image]][david-url]
 
 `decent` is a Redis-based job queue for Node.
 
@@ -242,3 +245,11 @@ Feel feel to raise any issues or feature requests, note that we do intend to kee
 
 MIT
 
+[npm-image]: https://img.shields.io/npm/v/decent.svg?style=flat-square
+[npm-url]: https://npmjs.org/package/decent
+[travis-image]: https://img.shields.io/travis/bitinn/decent.svg?style=flat-square
+[travis-url]: https://travis-ci.org/bitinn/decent
+[coveralls-image]: https://img.shields.io/coveralls/bitinn/decent.svg?style=flat-square
+[coveralls-url]: https://coveralls.io/r/bitinn/decent
+[david-image]: https://img.shields.io/david/bitinn/decent.svg?style=flat-square
+[david-url]: https://david-dm.org/bitinn/decent.svg
