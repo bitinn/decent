@@ -7,26 +7,23 @@ decent
 [![coverage status][coveralls-image]][coveralls-url]
 [![dependency status][david-image]][david-url]
 
-`decent` is a Redis-based job queue for Node.
-
-*Job queue is hard to manage, we make it decent for you.*
+`decent` is a decent Redis job queue for Node.js
 
 
 # Motivation
 
-Despite efforts from brilliant developers, a reliable job queue using node.js and redis is still somewhat of a mythical beast. And no wonder: redis isn't a queueing solution by itself and node.js isn't known for superior error handling; add concurrency into the mix and you got a leaky pipeline that's almost impossible to debug.
+There are powerful job queue modules for node.js + redis out there, like [kue](https://github.com/LearnBoost/kue) and [bull](https://github.com/OptimalBits/bull), to name a few. But powerful API comes at a price, they need complex data structure and redis scripts to achieve features such as delayed job, pause/resume and full text search. And since redis doesn't have traditional transaction, ie. [no rollback when one of the command failed](http://redis.io/topics/transactions), and [doesn't trigger error in node-redis driver](https://github.com/mranney/node_redis/issues/689), things can go south without developers noticing. Plus it's difficult to figure out what really happened due to non-intuitive redis data structure.
 
-In short, we need better groundwork before we can harness the power of queue. Hence the birth of `decent`: we want a library that provides solid building blocks for complex pipelines, so we can safely enjoy what job queue has to offer.
+To us, the proper answer is to design around this problem, instead of adding more features, we want a job queue that's barebone, fully tested, easy to inspect, and doesn't hide errors from developers.
 
 
 # Features
 
-- **Simple API**, powered by `Promise`, works in harmony with your generator library.
-- **Automatic job clean up and recovery**, no need to purge jobs manually.
-- **Proper code coverage**, we put extra emphasis on negative tests, because that's when most queues fall apart and cause headaches.
-- **Annotated source code**, less than 800 loc in total.
-- No dependency besides `redis` driver, make use of native promise whenever possible, fallback to `bluebird` for older Node release.
-- Rich events to aid automation, status monitoring or building larger pipeline.
+- Simple API with promise, works with your co/koa/whatever generator library.
+- Automatic job clean up and recovery.
+- Rich events to aid monitoring or building larger pipeline.
+- Make use of native promise, and allow your favorite alternative.
+- No dependency besides `redis` driver.
 
 
 # Install
@@ -34,8 +31,12 @@ In short, we need better groundwork before we can harness the power of queue. He
 `npm install decent --save`
 
 
-# API
+# Usage
 
+TODO
+
+
+# API
 
 ## decent(name, opts)
 
@@ -223,22 +224,6 @@ queue.restart();
 
 - `queue.emit('add ok', job)`: a `job` has been added to queue.
 - `queue.emit('add error', err, job)`: failed to add a `job` onto queue due to `err`.
-
-
-# Development
-
-```
-npm install
-npm test
-```
-
-Feel feel to raise any issues or feature requests, note that we do intend to keep this API simple, and all changes must be well-tested.
-
-
-# Future plan
-
-- Use case examples
-- Web UI
 
 
 # License
