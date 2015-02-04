@@ -7,9 +7,9 @@ Changelog
 
 ## v1.0.0
 
-- Feature: queue item progress tracking
-- Enhance: remove unnecessary code and tests
-- Enhance: examples
+- Feature: job item now includes their current queue name for better tracking
+- Enhance: remove obsolete code and tests
+- Break: Redis client and add/remove events are removed
 
 
 # 0.x release

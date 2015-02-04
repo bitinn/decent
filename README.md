@@ -20,10 +20,9 @@ To us, the proper answer is to design around this problem, instead of adding mor
 # Features
 
 - Simple API with promise, works with your co/koa/whatever generator library.
-- Automatic job clean up and recovery.
-- Rich events to aid monitoring or building larger pipeline.
+- Automatic job recovery that ease queue shutdown and restart.
 - Make use of native promise, and allow your favorite alternative.
-- No dependency besides `redis` driver.
+- Only dependency is the redis driver.
 
 
 # Install
@@ -59,7 +58,7 @@ var queue2 = decent('q2', {
 
 - `port`: redis server port, default to `6379`
 - `host`: redis server host, default to `'127.0.0.1'`
-- `blockTimeout`: how long a client should wait for next job (see redis document on blocking command, such as [BLPOP](http://redis.io/commands/BLPOP)), defaults to `30` seconds, `0` to block forever.
+- `blockTimeout`: how long a client should wait for next job (see redis document on blocking command, such as [BLPOP](http://redis.io/commands/BLPOP)), defaults to `60` seconds, `0` to block forever.
 - `maxRetry`: how many retries a job can have before being moved to failure queue, defaults to `3`, `0` to disable retry.
 - and all [redis client options](https://github.com/mranney/node_redis#rediscreateclient).
 
@@ -93,6 +92,7 @@ queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
 - `data`: payload
 - `retry`: current retry count for this job
 - `timeout`: how many seconds a worker can run before it's terminated.
+- `queue`: which queue this job currently belongs to.
 
 
 ## queue.worker(handler)
@@ -204,26 +204,15 @@ queue.restart();
 
 `decent` is an instance of `EventEmitter`, so you can use `queue.on('event', func)` as usual.
 
-## Redis client related
-
-- `queue.emit('client ready')`: client is ready. (redis client has buffer built-in, so this event is emitted as soon as redis client is started.)
-- `queue.emit('client error', err)`: client connection experiences error.
-- `queue.emit('client close')`: client connection has been closed.
-- `queue.emit('client pressure', number)`: pending number of commands, useful for rate limiting.
-
 ## queue worker related
 
 - `queue.emit('queue start')`: queue loop has started.
 - `queue.emit('queue work', job)`: queue worker begin to process a `job`.
 - `queue.emit('queue ok', job)`: queue worker has processed a `job`.
-- `queue.emit('queue error', err, job)`: queue worker has failed to processed a `job` and thrown `err` (caught properly, so queue does not exit)
-- `queue.emit('queue exit', err)`: queue loop has terminated due to `err`.
+- `queue.emit('queue error', err, job)`: queue worker has failed to processed a `job` and thrown `err`, will retry later.
+- `queue.emit('queue failure', err, job)`: queue worker has failed to processed a `job` and thrown `err`, retry limit reached.
+- `queue.emit('queue exit', err)`: queue loop has terminated due to unhandled `err`.
 - `queue.emit('queue stop')`: queue loop has stopped gracefully.
-
-## queue client related
-
-- `queue.emit('add ok', job)`: a `job` has been added to queue.
-- `queue.emit('add error', err, job)`: failed to add a `job` onto queue due to `err`.
 
 
 # License

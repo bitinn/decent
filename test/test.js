@@ -12,9 +12,10 @@ var expect = chai.expect;
 
 // test subjects
 var decent = require('../index.js');
-var QueueClass = require('../lib/decent.js');
+// fallback to bluebird promise on node v0.10
+var Promise = global.Promise || require('bluebird');
+decent.Promise = Promise;
 var EventEmitter = require('events').EventEmitter;
-var Promise = require('native-or-bluebird');
 
 // global vars
 var queue;
@@ -55,14 +56,14 @@ describe('decent', function() {
 
 	describe('constructor', function() {
 		it('should return a decent instance', function() {
-			expect(queue).to.be.an.instanceof(QueueClass);
+			expect(queue).to.be.an.instanceof(decent);
 
 			expect(queue.name).to.equal('test');
 			expect(queue.port).to.equal(6379);
 			expect(queue.host).to.equal('127.0.0.1');
 
 			expect(queue.config).to.be.an('object');
-			expect(queue.config.blockTimeout).to.equal(30);
+			expect(queue.config.blockTimeout).to.equal(60);
 			expect(queue.config.maxRetry).to.equal(3);
 
 			expect(queue.opts).to.be.an('object');
@@ -164,61 +165,6 @@ describe('decent', function() {
 			return expect(queue.add(testObj)).to.eventually.be.rejectedWith(Error);
 		});
 
-		it('should emit event when done', function() {
-			var spy = sinon.spy();
-			queue.on('add ok', spy);
-
-			return queue.add({ a: 1 }).then(function(job) {
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWithMatch(job);
-			});
-		});
-
-		it('should emit event when failed', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.client.set(queue.workQueue, 1);
-
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
-			return queue.add({ a: 1 }).catch(function(err) {
-				expect(spy.args[0][0]).to.be.an.instanceof(Error);
-				expect(spy.args[0][1]).to.deep.equal(job);
-			});
-		});
-
-		it('should reject if redis return empty error', function() {
-			var sandbox = sinon.sandbox.create();
-			var s0 = sandbox.stub(queue.client, 'multi').returnsThis();
-			var s1 = sandbox.stub(queue.client, 'hmset').returnsThis();
-			var s2 = sandbox.stub(queue.client, 'lrem').returnsThis();
-			var s3 = sandbox.stub(queue.client, 'lpush').returnsThis();
-			var s4 = sandbox.stub(queue.client, 'exec', function(cb) {
-				cb([], null);
-			});
-
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
-			return queue.add({ a: 1 }).catch(function(err) {
-				sandbox.restore();
-
-				expect(s0).to.have.been.calledOnce;
-				expect(s1).to.have.been.calledOnce;
-				expect(s2).to.have.been.calledOnce;
-				expect(s3).to.have.been.calledOnce;
-				expect(s4).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(err);
-			});
-		});
-
 		it('should reject if redis return array of errors', function() {
 			var error = new Error('some error');
 			var sandbox = sinon.sandbox.create();
@@ -230,35 +176,9 @@ describe('decent', function() {
 				cb([error], null);
 			});
 
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
 			return queue.add({ a: 1 }).catch(function(err) {
 				sandbox.restore();
-
-				expect(spy).to.have.been.calledWith(error);
 				expect(err).to.equal(error);
-			});
-		});
-
-		it('should reject if hmset response has unexpected value', function() {
-			var sandbox = sinon.sandbox.create();
-			var s0 = sinon.stub(queue.client, 'multi').returnsThis();
-			var s1 = sinon.stub(queue.client, 'hmset').returnsThis();
-			var s2 = sinon.stub(queue.client, 'lrem').returnsThis();
-			var s3 = sinon.stub(queue.client, 'lpush').returnsThis();
-			var s4 = sinon.stub(queue.client, 'exec', function(cb) {
-				cb(null, ['NOT OK']);
-			});
-
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
-			return queue.add({ a: 1 }).catch(function(err) {
-				sandbox.restore();
-
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(err);
 			});
 		});
 
@@ -272,14 +192,9 @@ describe('decent', function() {
 				cb(null, ['OK', 2]);
 			});
 
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
 			return queue.add({ a: 1 }).catch(function(err) {
 				sandbox.restore();
-
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(err);
+				expect(err).to.be.an.instanceof(Error);
 			});
 		});
 
@@ -293,14 +208,9 @@ describe('decent', function() {
 				cb(null, ['OK', 0, 0]);
 			});
 
-			var spy = sinon.spy();
-			queue.on('add error', spy);
-
 			return queue.add({ a: 1 }).catch(function(err) {
 				sandbox.restore();
-
-				expect(spy).to.have.been.calledOnce;
-				expect(spy).to.have.been.calledWith(err);
+				expect(err).to.equal(error);
 			});
 		});
 	});
@@ -312,6 +222,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -329,75 +240,35 @@ describe('decent', function() {
 			return expect(queue.remove(1, 'invalid')).to.eventually.be.rejectedWith(Error);
 		});
 
-		it('should reject if redis return empty error', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
-			queue.client.lpush(queue.runQueue, job.id);
-
-			var sandbox = sinon.sandbox.create();
-			var s0 = sandbox.stub(queue.client, 'multi').returnsThis();
-			var s1 = sandbox.stub(queue.client, 'lrem').returnsThis();
-			var s2 = sandbox.stub(queue.client, 'del').returnsThis();
-			var s3 = sandbox.stub(queue.client, 'exec', function(cb) {
-				cb([], null);
-			});
-
-			return queue.remove({ a: 1 }, 'run').catch(function(err) {
-				sandbox.restore();
-
-				expect(s0).to.have.been.calledOnce;
-				expect(s1).to.have.been.calledOnce;
-				expect(s2).to.have.been.calledOnce;
-				expect(s3).to.have.been.calledOnce;
-				expect(err).to.be.an.instanceof(Error);
-			});
-		});
-
 		it('should reject if redis return array of errors', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
 			var p = queue.remove(job.id, 'run');
+			queue.client.on('error', function(err) {
+				// hide redis client error
+			});
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should reject if job id is missing', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
+			return expect(queue.remove(1)).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should reject if job data is missing', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
+			queue.client.lpush(queue.workQueue, 1);
 
-			queue.client.lpush(queue.workQueue, job.id);
-
-			return expect(queue.remove(job.id)).to.eventually.be.rejectedWith(Error);
+			return expect(queue.remove(1)).to.eventually.be.rejectedWith(Error);
 		});
 	});
 
@@ -458,6 +329,9 @@ describe('decent', function() {
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 
 			var p = queue.get(job.id);
+			queue.client.on('error', function(err) {
+				// hide redis client error
+			});
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
@@ -668,6 +542,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -688,9 +563,10 @@ describe('decent', function() {
 				id: 1
 				, data: { a: 1 }
 				, retry: 0
-				// don't do this, only integer are supported
+				// don't do this, only integers are supported
 				// this is to fake timeout
 				, timeout: 0.01
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -719,6 +595,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 0
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -746,6 +623,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 0
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -772,6 +650,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -800,6 +679,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -822,6 +702,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -849,6 +730,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -862,13 +744,43 @@ describe('decent', function() {
 					done(error);
 				}, 25);
 			});
-			var s1 = sinon.stub(queue, 'moveJob');
-			s1.returns(Promise.resolve(true));
 
 			var spy = sinon.spy();
 			queue.on('queue error', spy);
 
 			return queue.handleJob(job).then(function() {
+				job.retry = 1;
+				expect(spy).to.have.been.calledOnce;
+				expect(spy).to.have.been.calledWith(error, job);
+			});
+		});
+
+		it('should emit failure from handler', function() {
+			var job = {
+				id: 1
+				, data: { a: 1 }
+				, retry: 3
+				, timeout: 60
+				, queue: queue.runQueue
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
+			queue.client.lpush(queue.runQueue, job.id);
+
+			queue.handler = function(job, done) { done() };
+
+			var error = new Error('some error');
+			var s0 = sinon.stub(queue, 'handler', function(job, done) {
+				setTimeout(function() {
+					done(error);
+				}, 25);
+			});
+
+			var spy = sinon.spy();
+			queue.on('queue failure', spy);
+
+			return queue.handleJob(job).then(function() {
+				job.retry = 1;
 				expect(spy).to.have.been.calledOnce;
 				expect(spy).to.have.been.calledWith(error, job);
 			});
@@ -880,6 +792,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -911,6 +824,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -929,6 +843,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 3
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -947,6 +862,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -959,70 +875,53 @@ describe('decent', function() {
 			});
 		});
 
-		it('should reject if redis return empty error', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
-			queue.client.lpush(queue.runQueue, job.id);
-
-			var sandbox = sinon.sandbox.create();
-			var s0 = sandbox.stub(queue.client, 'multi').returnsThis();
-			var s1 = sandbox.stub(queue.client, 'rpoplpush').returnsThis();
-			var s2 = sandbox.stub(queue.client, 'hset').returnsThis();
-			var s3 = sandbox.stub(queue.client, 'exec', function(cb) {
-				cb([], null);
-			});
-
-			return queue.moveJob(job).catch(function(err) {
-				sandbox.restore();
-
-				expect(s0).to.have.been.calledOnce;
-				expect(s1).to.have.been.calledOnce;
-				expect(s2).to.have.been.calledOnce;
-				expect(s3).to.have.been.calledOnce;
-				expect(err).to.be.an.instanceof(Error);
-			});
-		});
-
 		it('should reject if redis return array of errors', function() {
 			var job = {
 				id: 1
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
 			queue.client.lpush(queue.runQueue, job.id);
 
 			var p = queue.moveJob(job);
+			queue.client.on('error', function(err) {
+				// hide redis client error
+			});
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
 		});
 
 		it('should reject if job id is missing', function() {
-			var job = {
-				id: 1
-				, data: { a: 1 }
-				, retry: 0
-				, timeout: 60
-			};
-
-			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
+			return expect(queue.moveJob(1)).to.eventually.be.rejectedWith(Error);
 		});
 
-		it('should reject if job data is partial', function() {
+		it('should reject if job data is missing retry count', function() {
 			var job = {
 				id: 1
 				, data: '{"a":1}'
 				//, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
+			};
+
+			queue.client.hmset(queue.prefix + ':' + job.id, job);
+			queue.client.lpush(queue.runQueue, job.id);
+
+			return expect(queue.moveJob(job)).to.eventually.be.rejectedWith(Error);
+		});
+
+		it('should reject if job data is missing queue name', function() {
+			var job = {
+				id: 1
+				, data: '{"a":1}'
+				, retry: 0
+				, timeout: 60
+				//, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, job);
@@ -1043,6 +942,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -1059,6 +959,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + job.id, queue.toClient(job));
@@ -1075,6 +976,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			var j2 = {
@@ -1082,6 +984,7 @@ describe('decent', function() {
 				, data: { b: 1 }
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			queue.client.hmset(queue.prefix + ':' + j1.id, queue.toClient(j1));
@@ -1096,6 +999,9 @@ describe('decent', function() {
 			var stub = sinon.stub(queue, 'count').returns(Promise.resolve(1));
 
 			var p = queue.recoverJob();
+			queue.client.on('error', function(err) {
+				// hide redis client error
+			});
 			queue.client.stream.destroy();
 
 			return expect(p).to.eventually.be.rejectedWith(Error);
@@ -1180,6 +1086,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 120
+				, queue: queue.runQueue
 			};
 
 			expect(queue.toClient(job)).to.deep.equal({
@@ -1187,6 +1094,7 @@ describe('decent', function() {
 				, data: '{"a":1}'
 				, retry: 0
 				, timeout: 120
+				, queue: queue.runQueue
 			});
 		});
 
@@ -1200,6 +1108,7 @@ describe('decent', function() {
 				, data: testObj
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			expect(function() { queue.toClient(job) }).to.throw(Error);
@@ -1213,6 +1122,7 @@ describe('decent', function() {
 				, data: '{"a":1}'
 				, retry: '0'
 				, timeout: '120'
+				, queue: queue.runQueue
 			};
 
 			expect(queue.fromClient(job)).to.deep.equal({
@@ -1220,6 +1130,7 @@ describe('decent', function() {
 				, data: { a: 1 }
 				, retry: 0
 				, timeout: 120
+				, queue: queue.runQueue
 			});
 		});
 
@@ -1229,87 +1140,10 @@ describe('decent', function() {
 				, data: 'a:1'
 				, retry: 0
 				, timeout: 60
+				, queue: queue.runQueue
 			};
 
 			expect(function() { queue.fromClient(job) }).to.throw(Error);
-		});
-	});
-
-	describe('clientReady', function() {
-		it('should emit client ready event', function() {
-			var spy = sinon.spy();
-			queue.on('client ready', spy);
-
-			queue.client.emit('ready');
-
-			expect(spy).to.have.been.calledOnce;
-		});
-	});
-
-	describe('clientConnect', function() {
-		it('should emit client ready event when no_ready_check is set', function() {
-			var spy = sinon.spy();
-			queue.on('client ready', spy);
-
-			queue.opts.no_ready_check = true;
-			queue.client.emit('connect');
-
-			expect(spy).to.have.been.calledOnce;
-		});
-	});
-
-	describe('clientError', function() {
-		it('should emit client error event with redis client error', function() {
-			var spy = sinon.spy();
-			queue.on('client error', spy);
-
-			var err = new Error('some error');
-			queue.client.emit('error', err);
-
-			var nonerr = 'not a error';
-			queue.client.emit('error', nonerr);
-
-			expect(spy).to.have.been.calledOnce;
-			expect(spy).to.have.been.calledWith(err);
-		});
-	});
-
-	describe('clientEnd', function() {
-		it('should emit client close event', function() {
-			var spy = sinon.spy();
-			queue.on('client close', spy);
-
-			queue.client.emit('end');
-
-			expect(spy).to.have.been.calledOnce;
-		});
-	});
-
-	describe('clientDrain', function() {
-		it('should emit client pressure event when cmd queue is non-zero', function() {
-			var spy = sinon.spy();
-			queue.on('client pressure', spy);
-
-			// on node v0.10+ spy should be called 3 times, 0-1-0 in that order
-			// on node v0.8 spy can be called more than 3 times
-			return queue.add({ a: 1 }).then(function() {
-				expect(queue.idle).to.be.true;
-				expect(spy).to.have.been.called;
-				expect(spy).to.have.been.calledWith(1);
-			});
-		});
-	});
-
-	describe('clientIdle', function() {
-		it('should emit client pressure event when no pending cmd', function() {
-			var spy = sinon.spy();
-			queue.on('client pressure', spy);
-
-			return queue.add({ a: 1 }).then(function() {
-				expect(queue.idle).to.be.true;
-				expect(spy).to.have.been.called;
-				expect(spy).to.have.been.calledWith(0);
-			});
 		});
 	});
 
