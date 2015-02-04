@@ -1,6 +1,6 @@
 {
   "name": "decent",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "This is a decent Redis-based job queue for Node.",
   "main": "index.js",
   "scripts": {
