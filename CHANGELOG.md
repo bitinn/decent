@@ -5,6 +5,10 @@ Changelog
 
 # 1.x release
 
+## v1.0.1 (master)
+
+- Fix: node v0.10 promise support
+
 ## v1.0.0
 
 - Feature: job item now includes their current queue name for better tracking
