@@ -33,39 +33,39 @@
         <h1>
 <a id="decent" class="anchor" href="#decent" aria-hidden="true"><span class="octicon octicon-link"></span></a>decent</h1>
 
-<p><a href="http://badge.fury.io/js/decent"><img src="https://badge.fury.io/js/decent.svg" alt="npm version"></a> <a href="https://travis-ci.org/bitinn/decent"><img src="https://travis-ci.org/bitinn/decent.svg" alt="Build Status"></a> <a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg" alt="Coverage Status"></a> <a href="https://david-dm.org/bitinn/decent"><img src="https://david-dm.org/bitinn/decent.svg" alt="Dependency Status"></a></p>
+<p><a href="https://www.npmjs.com/package/decent"><img src="https://img.shields.io/npm/v/decent.svg?style=flat-square" alt="npm version"></a>
+<a href="https://travis-ci.org/bitinn/decent"><img src="https://img.shields.io/travis/bitinn/decent.svg?style=flat-square" alt="build status"></a>
+<a href="https://coveralls.io/r/bitinn/decent"><img src="https://img.shields.io/coveralls/bitinn/decent.svg?style=flat-square" alt="coverage status"></a>
+<a href="https://david-dm.org/bitinn/decent"><img src="https://img.shields.io/david/bitinn/decent.svg?style=flat-square" alt="dependency status"></a></p>
 
-<p><code>decent</code> is a Redis-based job queue for Node.</p>
-
-<p><em>Job queue is hard to manage, we make it decent for you.</em></p>
+<p><code>decent</code> is a decent Redis job queue for Node.js</p>
 
 <h1>
 <a id="motivation" class="anchor" href="#motivation" aria-hidden="true"><span class="octicon octicon-link"></span></a>Motivation</h1>
 
-<p>Despite efforts from brilliant developers, a reliable job queue using node.js and redis is still somewhat of a mythical beast. And no wonder: redis isn't a queueing solution by itself and node.js isn't known for superior error handling; add concurrency into the mix and you got a leaky pipeline that's almost impossible to debug.</p>
+<p>There are powerful job queue modules for node.js + redis out there, like <a href="https://github.com/LearnBoost/kue">kue</a> and <a href="https://github.com/OptimalBits/bull">bull</a>, to name a few. But powerful API comes at a price, they need complex data structure and redis scripts to achieve features such as delayed job, pause/resume and full text search. And since redis doesn't have traditional transaction, ie. <a href="http://redis.io/topics/transactions">no rollback when one of the command failed</a>, and <a href="https://github.com/mranney/node_redis/issues/689">doesn't trigger error in node-redis driver</a>, things can go south without developers noticing. Plus it's difficult to figure out what really happened due to non-intuitive redis data structure.</p>
 
-<p>In short, we need better groundwork before we can harness the power of queue. Hence the birth of <code>decent</code>: we want a library that provides solid building blocks for complex pipelines, so we can safely enjoy what job queue has to offer.</p>
+<p>To us, the proper answer is to design around this problem, instead of adding more features, we want a job queue that's barebone, fully tested, easy to inspect, and doesn't hide errors from developers.</p>
 
 <h1>
 <a id="features" class="anchor" href="#features" aria-hidden="true"><span class="octicon octicon-link"></span></a>Features</h1>
 
 <ul>
-<li>
-<strong>Simple API</strong>, powered by <code>Promise</code>, works in harmony with your generator library.</li>
-<li>
-<strong>Automatic job clean up and recovery</strong>, no need to purge jobs manually.</li>
-<li>
-<strong>Proper code coverage</strong>, we put extra emphasis on negative tests, because that's when most queues fall apart and cause headaches.</li>
-<li>
-<strong>Annotated source code</strong>, less than 800 loc in total.</li>
-<li>No dependency besides <code>redis</code> driver, make use of native promise whenever possible, fallback to <code>bluebird</code> for older Node release.</li>
-<li>Rich events to aid automation, status monitoring or building larger pipeline.</li>
+<li>Simple API with promise, works with your co/koa/whatever generator library.</li>
+<li>Automatic job recovery that ease queue shutdown and restart.</li>
+<li>Make use of native promise, and allow your favorite alternative.</li>
+<li>Only dependency is the redis driver.</li>
 </ul>
 
 <h1>
 <a id="install" class="anchor" href="#install" aria-hidden="true"><span class="octicon octicon-link"></span></a>Install</h1>
 
 <p><code>npm install decent --save</code></p>
+
+<h1>
+<a id="usage" class="anchor" href="#usage" aria-hidden="true"><span class="octicon octicon-link"></span></a>Usage</h1>
+
+<p>TODO</p>
 
 <h1>
 <a id="api" class="anchor" href="#api" aria-hidden="true"><span class="octicon octicon-link"></span></a>API</h1>
@@ -99,7 +99,7 @@ var queue2 = decent('q2', {
 <code>host</code>: redis server host, default to <code>'127.0.0.1'</code>
 </li>
 <li>
-<code>blockTimeout</code>: how long a client should wait for next job (see redis document on blocking command, such as <a href="http://redis.io/commands/BLPOP">BLPOP</a>), defaults to <code>30</code> seconds, <code>0</code> to block forever.</li>
+<code>blockTimeout</code>: how long a client should wait for next job (see redis document on blocking command, such as <a href="http://redis.io/commands/BLPOP">BLPOP</a>), defaults to <code>60</code> seconds, <code>0</code> to block forever.</li>
 <li>
 <code>maxRetry</code>: how many retries a job can have before being moved to failure queue, defaults to <code>3</code>, <code>0</code> to disable retry.</li>
 <li>and all <a href="https://github.com/mranney/node_redis#rediscreateclient">redis client options</a>.</li>
@@ -148,6 +148,8 @@ queue.add({ a: 1, b: 1 }, { retry: 1, timeout: 120 }).then(function(job) {
 <code>retry</code>: current retry count for this job</li>
 <li>
 <code>timeout</code>: how many seconds a worker can run before it's terminated.</li>
+<li>
+<code>queue</code>: which queue this job currently belongs to.</li>
 </ul>
 
 <h2>
@@ -262,20 +264,6 @@ queue.restart();
 <p><code>decent</code> is an instance of <code>EventEmitter</code>, so you can use <code>queue.on('event', func)</code> as usual.</p>
 
 <h2>
-<a id="redis-client-related" class="anchor" href="#redis-client-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>Redis client related</h2>
-
-<ul>
-<li>
-<code>queue.emit('client ready')</code>: client is ready. (redis client has buffer built-in, so this event is emitted as soon as redis client is started.)</li>
-<li>
-<code>queue.emit('client error', err)</code>: client connection experiences error.</li>
-<li>
-<code>queue.emit('client close')</code>: client connection has been closed.</li>
-<li>
-<code>queue.emit('client pressure', number)</code>: pending number of commands, useful for rate limiting.</li>
-</ul>
-
-<h2>
 <a id="queue-worker-related" class="anchor" href="#queue-worker-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue worker related</h2>
 
 <ul>
@@ -286,38 +274,13 @@ queue.restart();
 <li>
 <code>queue.emit('queue ok', job)</code>: queue worker has processed a <code>job</code>.</li>
 <li>
-<code>queue.emit('queue error', err, job)</code>: queue worker has failed to processed a <code>job</code> and thrown <code>err</code> (caught properly, so queue does not exit)</li>
+<code>queue.emit('queue error', err, job)</code>: queue worker has failed to processed a <code>job</code> and thrown <code>err</code>, will retry later.</li>
 <li>
-<code>queue.emit('queue exit', err)</code>: queue loop has terminated due to <code>err</code>.</li>
+<code>queue.emit('queue failure', err, job)</code>: queue worker has failed to processed a <code>job</code> and thrown <code>err</code>, retry limit reached.</li>
+<li>
+<code>queue.emit('queue exit', err)</code>: queue loop has terminated due to unhandled <code>err</code>.</li>
 <li>
 <code>queue.emit('queue stop')</code>: queue loop has stopped gracefully.</li>
-</ul>
-
-<h2>
-<a id="queue-client-related" class="anchor" href="#queue-client-related" aria-hidden="true"><span class="octicon octicon-link"></span></a>queue client related</h2>
-
-<ul>
-<li>
-<code>queue.emit('add ok', job)</code>: a <code>job</code> has been added to queue.</li>
-<li>
-<code>queue.emit('add error', err, job)</code>: failed to add a <code>job</code> onto queue due to <code>err</code>.</li>
-</ul>
-
-<h1>
-<a id="development" class="anchor" href="#development" aria-hidden="true"><span class="octicon octicon-link"></span></a>Development</h1>
-
-<pre><code>npm install
-npm test
-</code></pre>
-
-<p>Feel feel to raise any issues or feature requests, note that we do intend to keep this API simple, and all changes must be well-tested.</p>
-
-<h1>
-<a id="future-plan" class="anchor" href="#future-plan" aria-hidden="true"><span class="octicon octicon-link"></span></a>Future plan</h1>
-
-<ul>
-<li>Use case examples</li>
-<li>Web UI</li>
 </ul>
 
 <h1>
